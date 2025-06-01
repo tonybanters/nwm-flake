@@ -1,27 +1,48 @@
-// THis is an x11 based window manager for me to learn x11 protocol
 #ifndef NWM_HPP
 #define NWM_HPP
 
-//MACROS
+/* Include stuff */
 #include <X11/Xlib.h>
-#define WIDTH 40
-#define BORDER 0 
-#define HEIGHT 40
-#define POSITION_X 20
-#define POSITION_Y 30
+#include <fstream>
+#include <filesystem>
+#include <memory>
 
+#define BORDER 0 
+#define SCREEN_NUMBER 0 
+#define POSITION_X 0
+#define POSITION_Y 0
+#define FILE "~/.config/nwm/nwm.lua"
+#define WIDTH(display, screen_number) XDisplayWidth((display), (screen_number))
+#define HEIGHT(display, screen_number) XDisplayHeight((display), (screen_number))
 namespace nwm {
-struct UI_elt {
-    int screen;
-    Display* display;
-    Window root;
-};
-struct De{
-    Window window;
-    XEvent event;
-};
+    struct XDisplayDeleter {
+        void operator()(Display* dpy) const {
+            if (dpy) {
+                XCloseDisplay(dpy);
+            }
+        }
+    };
+
+    using UniqueDisplay = std::unique_ptr<Display, XDisplayDeleter>;
+
+    struct Base {
+        int screen;
+        UniqueDisplay display;
+        Window root;
+        std::fstream config;
+        Display* getDisplay() const;
+        void setDisplay(Display* dpy);
+        std::string error;
+    };
+
+    struct De {
+        Window window;
+        XEvent event;
+    };
 }
-void update(Window, XEvent,nwm::UI_elt&);
-void init(nwm::UI_elt&);
-void clean(nwm::UI_elt&, Window);
-#endif //NWM_HPP
+
+void update(Window, XEvent, nwm::Base&);
+void init(nwm::Base&);
+void clean(nwm::Base&, Window);
+
+#endif // NWM_HPP
