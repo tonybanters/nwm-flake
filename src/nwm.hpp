@@ -16,15 +16,13 @@ namespace nwm {
     struct Base {
         int screen;
         Window root;
+        Display *display;
         std::fstream config;
-        Display* getDisplay() const;
-        void setDisplay(Display* dpy);
         std::string error;
     };
-
     struct De {
         Window window;
-        XEvent event;
+        XEvent *event;
     };
 }
 

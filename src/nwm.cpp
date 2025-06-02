@@ -23,26 +23,25 @@ void file_check(nwm::Base& test){
 void init(nwm::Base &test){
     test.config.open(FILE);
     file_check(test);
-    Display* dpy = XOpenDisplay(nullptr);
-    if (!dpy) {
+    if (test.display == NULL) {
         std::cerr << "Display connection could not be initialized\n";
         std::exit(1);
     }
-    test.screen = DefaultScreen(test.display.get());
-    test.root = RootWindow(test.display.get(), test.screen);
+    test.screen = DefaultScreen(test.display);
+    test.root = RootWindow(test.display, test.screen);
 }
 
-void clean(nwm::Base &test, Window window){
-    XUnmapWindow(test.display.get(), window);
-    XDestroyWindow(test.display.get(), window);
-    XCloseDisplay(test.display.get());
+void clean(nwm::Base &test, nwm::De &env){
+    XUnmapWindow(test.display, env.window);
+    XDestroyWindow(test.display, env.window);
+    XCloseDisplay(test.display);
 }
 
 int main(void){
     nwm::De x;
     nwm::Base y;
     init(y);
-    update(x.window, x.event, y);
-    clean(y,x.window);
+    update(x,y);
+    clean(y,x);
     return 0;
 }
