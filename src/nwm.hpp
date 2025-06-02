@@ -2,6 +2,7 @@
 #define NWM_HPP
 
 /* Include stuff */
+#include "api.hpp"
 #include <X11/Xlib.h>
 #include <fstream>
 
@@ -9,7 +10,7 @@
 #define SCREEN_NUMBER 0 
 #define POSITION_X 0
 #define POSITION_Y 0
-#define FILE "~/.config/nwm/nwm.lua"
+
 #define WIDTH(display, screen_number) XDisplayWidth((display), (screen_number))
 #define HEIGHT(display, screen_number) XDisplayHeight((display), (screen_number))
 namespace nwm {
@@ -26,7 +27,7 @@ namespace nwm {
     };
 }
 
-void update(nwm::De&, nwm::Base&);
+void update(nwm::De&, nwm::Base&m, application::app&);
 void init(nwm::Base&);
 void clean(nwm::Base&, nwm::De&);
 
