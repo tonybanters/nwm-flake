@@ -42,8 +42,6 @@ void clean(nwm::Base &test, nwm::De &env){
 
 int main(void){
     setenv("DISPLAY", ":0", 1);
-    char* display = getenv("DISPLAY");
-    std::cout << "DISPLAY inside WM: " << (display ? display : "not set") << std::endl;
     application::app a;
     nwm::De x;
     nwm::Base y;
