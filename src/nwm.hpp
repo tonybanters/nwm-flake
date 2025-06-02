@@ -2,47 +2,33 @@
 #define NWM_HPP
 
 /* Include stuff */
+#include "api.hpp"
 #include <X11/Xlib.h>
 #include <fstream>
-#include <filesystem>
-#include <memory>
 
 #define BORDER 0 
 #define SCREEN_NUMBER 0 
 #define POSITION_X 0
 #define POSITION_Y 0
-#define FILE "~/.config/nwm/nwm.lua"
+
 #define WIDTH(display, screen_number) XDisplayWidth((display), (screen_number))
 #define HEIGHT(display, screen_number) XDisplayHeight((display), (screen_number))
 namespace nwm {
-    struct XDisplayDeleter {
-        void operator()(Display* dpy) const {
-            if (dpy) {
-                XCloseDisplay(dpy);
-            }
-        }
-    };
-
-    using UniqueDisplay = std::unique_ptr<Display, XDisplayDeleter>;
-
     struct Base {
         int screen;
-        UniqueDisplay display;
         Window root;
+        Display *display;
         std::fstream config;
-        Display* getDisplay() const;
-        void setDisplay(Display* dpy);
         std::string error;
     };
-
     struct De {
         Window window;
-        XEvent event;
+        XEvent *event;
     };
 }
 
-void update(Window, XEvent, nwm::Base&);
+void update(nwm::De&, nwm::Base&m, application::app&);
 void init(nwm::Base&);
-void clean(nwm::Base&, Window);
+void clean(nwm::Base&, nwm::De&);
 
 #endif // NWM_HPP

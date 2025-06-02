@@ -15,6 +15,7 @@ void todo() {
     std::cout << "Exiting" << std::endl;
     resetColor();
     std::exit(1);
+    system("pkill nwm");
 }
 void error(std::string message) {
     setColor(RED);
