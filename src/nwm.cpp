@@ -3,23 +3,14 @@
 #include <X11/Xlib.h>
 #include <sys/stat.h>
 #include <cassert>
-#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 
-Display* nwm::Base::getDisplay() const {
-    return display.get();
-}
 
-void nwm::Base::setDisplay(Display* dpy){
-    display.reset(dpy);
-}
-
-
-void update(Window window, XEvent event, nwm::Base &test){
-    window = XCreateSimpleWindow(test.display.get(), test.root, POSITION_X, POSITION_Y,  WIDTH(test.display.get(), SCREEN_NUMBER), HEIGHT(test.display.get(), SCREEN_NUMBER), BORDER ,BlackPixel(test.display.get(), test.screen), BlackPixel(test.display.get(), test.screen));
-    XMapWindow(test.display.get(), window);
-    while (XNextEvent(test.display.get(), &event) == 0) {
+void update(nwm::De &env, nwm::Base &test){
+    env.window = XCreateSimpleWindow(test.display, test.root, POSITION_X, POSITION_Y,  WIDTH(test.display, SCREEN_NUMBER), HEIGHT(test.display, SCREEN_NUMBER), BORDER ,BlackPixel(test.display, test.screen), BlackPixel(test.display, test.screen));
+    XMapWindow(test.display, env.window);
+    while (XNextEvent(test.display, env.event) == 0) {
     }
 }
 void file_check(nwm::Base& test){
@@ -36,10 +27,6 @@ void init(nwm::Base &test){
     if (!dpy) {
         std::cerr << "Display connection could not be initialized\n";
         std::exit(1);
-    }
-    test.setDisplay(dpy);
-    if (test.display.get() == NULL) {
-        std::cerr << "Diplay connection could not be initalized";
     }
     test.screen = DefaultScreen(test.display.get());
     test.root = RootWindow(test.display.get(), test.screen);
