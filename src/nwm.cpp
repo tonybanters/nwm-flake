@@ -21,8 +21,7 @@ void file_check(nwm::Base& test){
 }
 
 void init(nwm::Base &test){
-    test.config.open(FILE);
-    file_check(test);
+    test.display = XOpenDisplay(NULL);
     if (test.display == NULL) {
         std::cerr << "Display connection could not be initialized\n";
         std::exit(1);
