@@ -15,17 +15,13 @@ HELP=@echo "Run make build to build the project"
 
 default:
 	$(CC) $(CFLAGS) $(ILUA) $(IX11) $(SRC) $(LLUA) $(LX11) -o $(BIN)
-
 build:
 	$(CC) $(CFLAGS) $(THIRDPARTY) $(ILUA) $(IX11) $(SRC) $(LLUA) $(LX11) -o $(BIN)
-
 install: build
 	install -Dm755 $(BIN) $(BINDIR)/$(BIN)
 	@echo "Installed $(BIN) to $(BINDIR)"
-
 clean:
 	rm -rf $(BIN)
-
 help:
 	$(HELP)
 
