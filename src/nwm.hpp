@@ -13,6 +13,7 @@
 
 #define WIDTH(display, screen_number) XDisplayWidth((display), (screen_number))
 #define HEIGHT(display, screen_number) XDisplayHeight((display), (screen_number))
+
 namespace nwm {
     struct Base {
         int screen;
@@ -27,8 +28,16 @@ namespace nwm {
     };
 }
 
-void update(nwm::De&, nwm::Base&m, application::app&);
+// Start stuff
+void update(nwm::De&, nwm::Base&, application::app&);
 void init(nwm::Base&);
 void clean(nwm::Base&, nwm::De&);
+void file_check(nwm::Base&);
+
+// Event handlers
+void handle_key_press(XKeyEvent*, nwm::Base&, application::app&);
+void handle_button_press(XButtonEvent*, nwm::Base&, application::app&);
+void handle_configure_request(XConfigureRequestEvent*, nwm::Base&);
+void handle_map_request(XMapRequestEvent*, nwm::Base&, application::app&);
 
 #endif // NWM_HPP

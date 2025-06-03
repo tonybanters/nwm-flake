@@ -14,14 +14,19 @@ namespace application {
         int height;
         int width;
     };
-    struct keybinds{
-        
-    };
 }
+
+namespace nwm {
+    struct Base;
+}
+
 void resize_window(struct application::app&);
 void load_config(struct application::app&);
 void load_lua(struct application::app&);
-static int lua_grab_key(lua_State *L);
 void registerX11Functions(lua_State *L);
-static int lua_set_modifier(lua_State* L);
+
+int lua_grab_key(lua_State *L);
+int lua_set_modifier(lua_State* L);
+int lua_keysym_to_keycode(lua_State *L);
+
 #endif //CLIENT_HPP

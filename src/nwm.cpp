@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <iostream>
 
-
 void update(nwm::De &env, nwm::Base &test, application::app &apps){
         env.window = XCreateSimpleWindow(test.display, test.root, POSITION_X, POSITION_Y,  WIDTH(test.display, SCREEN_NUMBER), HEIGHT(test.display, SCREEN_NUMBER), BORDER ,BlackPixel(test.display, test.screen), BlackPixel(test.display, test.screen));
         XMapWindow(test.display, env.window);
