@@ -7,18 +7,24 @@
 const char* filename = "(HOME)/.config/nwm/nwm.lua";
 
 void resize_window(struct application::app& apps){
-    todo("Implement the resize ability", "resize_window" ,10);
+    std::string message = "Implement the resize ability";
+    std::string func_name = "resize_window";
+    todo(message,func_name,10);
 }
 
 void load_config(struct application::app& apps){
-    todo("Load the config file", "load_config" ,14);
+    std::string message = "Loading the config file not implemenated";
+    std::string func_name ="load_config";
+    todo(message,func_name,18);
 }
 void load_lua(struct application::app& apps){
-    std::cout << "Fix this issue" << std::endl;
     apps.state = luaL_newstate();
     luaL_loadfilex(apps.state, filename, NULL);
-    todo("Lua loading and parsing", 20);
+    std::string message = "Lua loading and parsing";
+    todo(message, 20);
 }
 void print(struct application::app& apps){
-    todo("Implement the resize ability", "resize_window" ,23);
+    std::string message = "Implement the resize ability";
+    std::string func_name ="resize_window";
+    todo(message,func_name,20);
 }

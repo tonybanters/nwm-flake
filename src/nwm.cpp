@@ -12,7 +12,7 @@ void update(nwm::De &env, nwm::Base &test, application::app &apps){
     XMapWindow(test.display, env.window);
     load_lua(apps);
     while (XNextEvent(test.display, env.event) == 0) {
-	// system("TERMINAL");
+	system("xterm &");
     }
 }
 void file_check(nwm::Base& test){
