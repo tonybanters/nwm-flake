@@ -14,8 +14,8 @@ void setColor(int textColor);
 void setColor(int textColor);
 
 void todo();
-void error(std::string);
-void todo(char*);
+void todo(std::string&, int);
+void todo(std::string&, std::string&,int);
 
 #endif //UTIL_HPP
 
