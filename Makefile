@@ -1,7 +1,7 @@
 CC=g++
 CFLAGS=-Werror -Wall
 SRC=src/*.cpp
-BIN=nwm
+BIN=feet
 ILUA=-I/usr/include/lua5.4
 LLUA=-llua -ldl -lm
 IX11=-I/usr/include/X11
