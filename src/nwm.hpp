@@ -54,6 +54,8 @@ struct Base {
     Window drag_window;
     int drag_start_x;
     int drag_start_y;
+    int drag_window_start_x;
+    int drag_window_start_y;
 };
 
 // Window management functions

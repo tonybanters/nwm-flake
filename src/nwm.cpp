@@ -256,6 +256,17 @@ void nwm::unmanage_window(Window window, Base &base) {
                 base.focused_window = nullptr;
             }
             current_ws.windows.erase(it);
+            
+            // Adjust scroll offset if in horizontal mode
+            if (base.horizontal_mode) {
+                int screen_width = WIDTH(base.display, base.screen);
+                int window_width = screen_width / 2;
+                int total_width = current_ws.windows.size() * window_width;
+                int max_scroll = std::max(0, total_width - screen_width);
+                
+                // Clamp scroll offset to valid range
+                current_ws.scroll_offset = std::min(current_ws.scroll_offset, max_scroll);
+            }
             break;
         }
     }
@@ -635,25 +646,37 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
         return;
     }
 
+    auto &current_ws = get_current_workspace(base);
+    
+    // Check if this is a Super + Left Click on a window
     if (e->button == Button1 && (e->state & MODKEY)) {
-        // Start dragging window with Super + Left Click
-        auto &current_ws = get_current_workspace(base);
+        // Find the window that was clicked
         for (auto &w : current_ws.windows) {
             if (e->window == w.window) {
                 base.dragging = true;
                 base.drag_window = w.window;
                 base.drag_start_x = e->x_root;
                 base.drag_start_y = e->y_root;
+                
+                // Store the initial window position
+                XWindowAttributes attr;
+                if (XGetWindowAttributes(base.display, w.window, &attr)) {
+                    base.drag_window_start_x = attr.x;
+                    base.drag_window_start_y = attr.y;
+                }
+                
                 focus_window(&w, base);
+                
+                // Grab the pointer
                 XGrabPointer(base.display, base.root, False,
                            PointerMotionMask | ButtonReleaseMask,
                            GrabModeAsync, GrabModeAsync,
                            None, None, CurrentTime);
-                break;
+                return;
             }
         }
     } else if (e->button == Button1) {
-        auto &current_ws = get_current_workspace(base);
+        // Normal click - just focus
         for (auto &w : current_ws.windows) {
             if (e->window == w.window) {
                 focus_window(&w, base);
@@ -697,10 +720,10 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
         int screen_width = WIDTH(base.display, base.screen);
         int window_width = screen_width / 2;
         
-        // Get the center x position of the dragged window
+        // Get the center x position of the dragged window based on final mouse position
         int window_center_x = e->x_root;
         
-        // Calculate target index based on drop position
+        // Calculate target index based on drop position (accounting for scroll)
         int target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
         
         // Clamp to valid range
@@ -727,12 +750,13 @@ void nwm::handle_motion_notify(XMotionEvent *e, Base &base) {
     for (auto &w : current_ws.windows) {
         if (w.window == base.drag_window) {
             int delta_x = e->x_root - base.drag_start_x;
-            int new_x = w.x + delta_x;
+            int delta_y = e->y_root - base.drag_start_y;
             
-            XMoveWindow(base.display, w.window, new_x, w.y);
+            int new_x = base.drag_window_start_x + delta_x;
+            int new_y = base.drag_window_start_y + delta_y;
             
-            base.drag_start_x = e->x_root;
-            base.drag_start_y = e->y_root;
+            XMoveWindow(base.display, w.window, new_x, new_y);
+            XRaiseWindow(base.display, w.window);
             break;
         }
     }
@@ -795,12 +819,17 @@ void nwm::init(Base &base) {
         std::exit(1);
     }
 
-    base.xft_font = XftFontOpenName(base.display, base.screen, "monospace:size=12");
+    // Load font from config
+    base.xft_font = XftFontOpenName(base.display, base.screen, FONT);
+    if (!base.xft_font) {
+        std::cerr << "Warning: Failed to load font '" << FONT << "', trying fallback\n";
+        base.xft_font = XftFontOpenName(base.display, base.screen, "monospace:size=10");
+    }
     if (!base.xft_font) {
         base.xft_font = XftFontOpenName(base.display, base.screen, "fixed");
     }
     if (!base.xft_font) {
-        std::cerr << "Error: Failed to load Xft font\n";
+        std::cerr << "Error: Failed to load any Xft font\n";
         std::exit(1);
     }
 

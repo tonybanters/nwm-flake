@@ -12,6 +12,9 @@ using namespace nwm;
 #define FOCUS_COLOR         0xFF5577
 #define GAP_SIZE            6
 
+/* font */
+#define FONT                "IosevkaNerdFont:size=12"
+
 /* resize step size (in pixels) */
 #define RESIZE_STEP         40
 
