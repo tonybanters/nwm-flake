@@ -32,6 +32,10 @@ void nwm::workspace_init(Base &base) {
     }
     base.current_workspace = 0;
     base.overview_mode = false;
+    base.dragging = false;
+    base.drag_window = None;
+    base.drag_start_x = 0;
+    base.drag_start_y = 0;
 }
 
 nwm::Workspace& nwm::get_current_workspace(Base &base) {
@@ -44,11 +48,6 @@ void nwm::switch_workspace(void *arg, Base &base) {
     int target_ws = *(int*)arg;
     if (target_ws < 0 || target_ws >= NUM_WORKSPACES) return;
     if (target_ws == (int)base.current_workspace) return;
-
-    // Exit overview mode if active
-    if (base.overview_mode) {
-        base.overview_mode = false;
-    }
 
     // Hide windows from current workspace
     for (auto &w : get_current_workspace(base).windows) {
@@ -113,93 +112,6 @@ void nwm::move_to_workspace(void *arg, Base &base) {
     } else {
         tile_windows(base);
     }
-}
-
-void nwm::toggle_overview(void *arg, Base &base) {
-    (void)arg;
-    base.overview_mode = !base.overview_mode;
-
-    if (base.overview_mode) {
-        // Show overview: display all workspaces in a 3x3 grid
-        int ws_per_row = 3;
-        int ws_per_col = 3;
-        int screen_width = WIDTH(base.display, base.screen);
-        int screen_height = HEIGHT(base.display, base.screen);
-        int bar_height = base.bar.height;
-        
-        int grid_width = screen_width / ws_per_row;
-        int grid_height = (screen_height - bar_height) / ws_per_col;
-        
-        // Padding around each workspace preview
-        int preview_padding = 20;
-
-        for (size_t ws_idx = 0; ws_idx < base.workspaces.size(); ++ws_idx) {
-            int row = ws_idx / ws_per_row;
-            int col = ws_idx % ws_per_row;
-            int grid_x = col * grid_width;
-            int grid_y = row * grid_height + bar_height;
-
-            auto &ws = base.workspaces[ws_idx];
-            
-            if (ws.windows.empty()) continue;
-            
-            // Calculate available space for windows in this workspace preview
-            int preview_width = grid_width - 2 * preview_padding;
-            int preview_height = grid_height - 2 * preview_padding;
-            
-            // Tile windows within the preview space
-            int num_windows = ws.windows.size();
-            
-            for (size_t i = 0; i < ws.windows.size(); ++i) {
-                XMapWindow(base.display, ws.windows[i].window);
-                
-                int win_width, win_height, win_x, win_y;
-                
-                if (num_windows == 1) {
-                    // Single window takes full preview space
-                    win_width = preview_width;
-                    win_height = preview_height;
-                    win_x = grid_x + preview_padding;
-                    win_y = grid_y + preview_padding;
-                } else {
-                    // Multiple windows: simple grid layout
-                    int cols = (int)ceil(sqrt(num_windows));
-                    int rows = (num_windows + cols - 1) / cols;
-                    
-                    int win_grid_width = preview_width / cols;
-                    int win_grid_height = preview_height / rows;
-                    
-                    int win_col = i % cols;
-                    int win_row = i / cols;
-                    
-                    win_x = grid_x + preview_padding + win_col * win_grid_width + 5;
-                    win_y = grid_y + preview_padding + win_row * win_grid_height + 5;
-                    win_width = win_grid_width - 10;
-                    win_height = win_grid_height - 10;
-                }
-                
-                XMoveResizeWindow(base.display, ws.windows[i].window,
-                                win_x, win_y, win_width, win_height);
-            }
-        }
-    } else {
-        // Exit overview: restore normal layout
-        for (size_t ws_idx = 0; ws_idx < base.workspaces.size(); ++ws_idx) {
-            if (ws_idx != base.current_workspace) {
-                for (auto &w : base.workspaces[ws_idx].windows) {
-                    XUnmapWindow(base.display, w.window);
-                }
-            }
-        }
-
-        if (base.horizontal_mode) {
-            tile_horizontal(base);
-        } else {
-            tile_windows(base);
-        }
-    }
-    
-    XFlush(base.display);
 }
 
 void nwm::setup_keys(nwm::Base &base) {
@@ -281,9 +193,10 @@ void nwm::scroll_right(void *arg, Base &base) {
 
     auto &current_ws = get_current_workspace(base);
     int screen_width = WIDTH(base.display, base.screen);
+    int window_width = screen_width / 2;
     
-    // Calculate total width of all windows
-    int total_width = current_ws.windows.size() * screen_width;
+    // Calculate total width needed for all windows (each is half screen)
+    int total_width = current_ws.windows.size() * window_width;
     int max_scroll = std::max(0, total_width - screen_width);
     
     current_ws.scroll_offset = std::min(max_scroll, 
@@ -387,15 +300,16 @@ void nwm::focus_next(void *arg, Base &base) {
     focus_window(&current_ws.windows[next_idx], base);
     
     if (base.horizontal_mode) {
-        // Smooth scroll to focused window
+        // Smooth scroll to show focused window
         int screen_width = WIDTH(base.display, base.screen);
-        int target_scroll = next_idx * screen_width;
+        int window_width = screen_width / 2;
+        int target_scroll = next_idx * window_width;
         
-        // Keep focused window visible
+        // Ensure focused window is visible
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
-        } else if (target_scroll > current_ws.scroll_offset + screen_width - screen_width) {
-            current_ws.scroll_offset = target_scroll - screen_width + screen_width;
+        } else if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
+            current_ws.scroll_offset = target_scroll + window_width - screen_width;
         }
         
         tile_horizontal(base);
@@ -419,15 +333,16 @@ void nwm::focus_prev(void *arg, Base &base) {
     focus_window(&current_ws.windows[prev_idx], base);
     
     if (base.horizontal_mode) {
-        // Smooth scroll to focused window
+        // Smooth scroll to show focused window
         int screen_width = WIDTH(base.display, base.screen);
-        int target_scroll = prev_idx * screen_width;
+        int window_width = screen_width / 2;
+        int target_scroll = prev_idx * window_width;
         
-        // Keep focused window visible
+        // Ensure focused window is visible
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
-        } else if (target_scroll > current_ws.scroll_offset + screen_width - screen_width) {
-            current_ws.scroll_offset = target_scroll - screen_width + screen_width;
+        } else if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
+            current_ws.scroll_offset = target_scroll + window_width - screen_width;
         }
         
         tile_horizontal(base);
@@ -528,12 +443,14 @@ void nwm::tile_horizontal(Base &base) {
     int bar_height = base.bar.height;
     int usable_height = screen_height - bar_height;
 
-    // Each window takes full screen width and height
+    // Each window takes half the screen width, laid out horizontally
+    int window_width = screen_width / 2;
+    
     for (size_t i = 0; i < current_ws.windows.size(); ++i) {
-        // Calculate position with scroll offset
-        int x_pos = i * screen_width - current_ws.scroll_offset + base.gaps;
+        // Calculate position with scroll offset applied
+        int x_pos = i * window_width - current_ws.scroll_offset + base.gaps;
         int y_pos = base.gaps + bar_height;
-        int win_width = screen_width - 2 * base.gaps - 2 * BORDER_WIDTH;
+        int win_width = window_width - 2 * base.gaps - 2 * BORDER_WIDTH;
         int win_height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
         
         current_ws.windows[i].x = x_pos;
@@ -610,14 +527,32 @@ void nwm::quit_wm(void *arg, Base &base) {
 void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
     manage_window(e->window, base);
     
+    auto &current_ws = get_current_workspace(base);
+    
+    // Auto-focus and scroll to the newly opened window
+    if (!current_ws.windows.empty()) {
+        ManagedWindow *new_window = &current_ws.windows.back();
+        focus_window(new_window, base);
+        
+        if (base.horizontal_mode) {
+            // Scroll to show the new window
+            int screen_width = WIDTH(base.display, base.screen);
+            int window_width = screen_width / 2;
+            int new_window_idx = current_ws.windows.size() - 1;
+            int target_scroll = new_window_idx * window_width;
+            
+            // Ensure new window is visible on the right side
+            if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
+                current_ws.scroll_offset = target_scroll + window_width - screen_width;
+            }
+        }
+    }
+    
     if (base.horizontal_mode) {
         tile_horizontal(base);
     } else {
         tile_windows(base);
     }
-    
-    auto &current_ws = get_current_workspace(base);
-    focus_window(&current_ws.windows.back(), base);
 }
 
 void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
@@ -697,35 +632,108 @@ void nwm::reload_config(void *arg, nwm::Base &base) {
 
 void nwm::handle_button_press(XButtonEvent *e, Base &base) {
     if (e->window == base.bar.window) {
-        // Handle workspace clicking in overview mode
-        if (base.overview_mode) {
-            int ws_per_row = 3;
-            int screen_width = WIDTH(base.display, base.screen);
-            int screen_height = HEIGHT(base.display, base.screen);
-            int bar_height = base.bar.height;
-            
-            int grid_width = screen_width / ws_per_row;
-            int grid_height = (screen_height - bar_height) / 3;
-            
-            int clicked_col = e->x / grid_width;
-            int clicked_row = (e->y - bar_height) / grid_height;
-            int clicked_ws = clicked_row * ws_per_row + clicked_col;
-            
-            if (clicked_ws >= 0 && clicked_ws < NUM_WORKSPACES) {
-                int ws = clicked_ws;
-                switch_workspace(&ws, base);
-            }
-        }
         return;
     }
 
-    if (e->button == Button1) {
+    if (e->button == Button1 && (e->state & MODKEY)) {
+        // Start dragging window with Super + Left Click
+        auto &current_ws = get_current_workspace(base);
+        for (auto &w : current_ws.windows) {
+            if (e->window == w.window) {
+                base.dragging = true;
+                base.drag_window = w.window;
+                base.drag_start_x = e->x_root;
+                base.drag_start_y = e->y_root;
+                focus_window(&w, base);
+                XGrabPointer(base.display, base.root, False,
+                           PointerMotionMask | ButtonReleaseMask,
+                           GrabModeAsync, GrabModeAsync,
+                           None, None, CurrentTime);
+                break;
+            }
+        }
+    } else if (e->button == Button1) {
         auto &current_ws = get_current_workspace(base);
         for (auto &w : current_ws.windows) {
             if (e->window == w.window) {
                 focus_window(&w, base);
                 break;
             }
+        }
+    }
+}
+
+void nwm::handle_button_release(XButtonEvent *e, Base &base) {
+    if (!base.dragging) return;
+    
+    if (e->button == Button1) {
+        base.dragging = false;
+        XUngrabPointer(base.display, CurrentTime);
+        
+        auto &current_ws = get_current_workspace(base);
+        
+        if (!base.horizontal_mode) {
+            // Not in horizontal mode, just retile
+            tile_windows(base);
+            base.drag_window = None;
+            return;
+        }
+        
+        // Find the dragged window
+        int dragged_idx = -1;
+        for (size_t i = 0; i < current_ws.windows.size(); ++i) {
+            if (current_ws.windows[i].window == base.drag_window) {
+                dragged_idx = i;
+                break;
+            }
+        }
+        
+        if (dragged_idx == -1) {
+            base.drag_window = None;
+            return;
+        }
+        
+        // Calculate which position the window should be dropped at
+        int screen_width = WIDTH(base.display, base.screen);
+        int window_width = screen_width / 2;
+        
+        // Get the center x position of the dragged window
+        int window_center_x = e->x_root;
+        
+        // Calculate target index based on drop position
+        int target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
+        
+        // Clamp to valid range
+        if (target_idx < 0) target_idx = 0;
+        if (target_idx >= (int)current_ws.windows.size()) target_idx = current_ws.windows.size() - 1;
+        
+        // Reorder windows if needed
+        if (target_idx != dragged_idx) {
+            ManagedWindow dragged_window = current_ws.windows[dragged_idx];
+            current_ws.windows.erase(current_ws.windows.begin() + dragged_idx);
+            current_ws.windows.insert(current_ws.windows.begin() + target_idx, dragged_window);
+        }
+        
+        base.drag_window = None;
+        tile_horizontal(base);
+    }
+}
+
+void nwm::handle_motion_notify(XMotionEvent *e, Base &base) {
+    if (!base.dragging || base.drag_window == None) return;
+    
+    // Visual feedback during drag - move the window with the mouse
+    auto &current_ws = get_current_workspace(base);
+    for (auto &w : current_ws.windows) {
+        if (w.window == base.drag_window) {
+            int delta_x = e->x_root - base.drag_start_x;
+            int new_x = w.x + delta_x;
+            
+            XMoveWindow(base.display, w.window, new_x, w.y);
+            
+            base.drag_start_x = e->x_root;
+            base.drag_start_y = e->y_root;
+            break;
         }
     }
 }
@@ -859,7 +867,8 @@ void nwm::run(Base &base) {
 
     XSelectInput(base.display, base.root,
                  SubstructureRedirectMask | SubstructureNotifyMask |
-                 ButtonPressMask | EnterWindowMask | KeyPressMask);
+                 ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
+                 EnterWindowMask | KeyPressMask);
 
     XSetErrorHandler(x_error_handler);
 
@@ -888,6 +897,12 @@ void nwm::run(Base &base) {
                     break;
                 case ButtonPress:
                     handle_button_press(&e.xbutton, base);
+                    break;
+                case ButtonRelease:
+                    handle_button_release(&e.xbutton, base);
+                    break;
+                case MotionNotify:
+                    handle_motion_notify(&e.xmotion, base);
                     break;
                 case EnterNotify:
                     handle_enter_notify(&e.xcrossing, base);

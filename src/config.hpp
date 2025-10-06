@@ -54,7 +54,6 @@ static struct {
     { MODKEY,             XK_q,               close_window,   NULL },
     { MODKEY,             XK_a,               toggle_gap,     NULL },
     { MODKEY,             XK_t,               toggle_layout,  NULL },
-    { MODKEY,             XK_Tab,             toggle_overview, NULL },
     
     /* Focus and movement */
     { MODKEY,             XK_j,               focus_next,     NULL },

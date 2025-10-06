@@ -48,6 +48,12 @@ struct Base {
     std::vector<Workspace> workspaces;
     size_t current_workspace;
     bool overview_mode;
+    
+    // Window dragging state
+    bool dragging;
+    Window drag_window;
+    int drag_start_x;
+    int drag_start_y;
 };
 
 // Window management functions
@@ -75,13 +81,14 @@ void move_window(ManagedWindow *window, int x, int y, Base &base);
 // Workspace functions
 void switch_workspace(void *arg, Base &base);
 void move_to_workspace(void *arg, Base &base);
-void toggle_overview(void *arg, Base &base);
 void workspace_init(Base &base);
 Workspace& get_current_workspace(Base &base);
 
 // Event handlers
 void handle_key_press(XKeyEvent *e, Base &base);
 void handle_button_press(XButtonEvent *e, Base &base);
+void handle_button_release(XButtonEvent *e, Base &base);
+void handle_motion_notify(XMotionEvent *e, Base &base);
 void handle_configure_request(XConfigureRequestEvent *e, Base &base);
 void handle_map_request(XMapRequestEvent *e, Base &base);
 void handle_unmap_notify(XUnmapEvent *e, Base &base);
