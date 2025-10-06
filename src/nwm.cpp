@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <csignal> 
+#include <csignal>
 
 void nwm::setup_keys(nwm::Base &base) {
     XUngrabKey(base.display, AnyKey, AnyModifier, base.root);
@@ -45,7 +45,7 @@ void nwm::spawn(void *arg, nwm::Base &base) {
         perror("execvp failed");
         exit(1);
     }
-    
+
     XSetInputFocus(base.display, base.root, RevertToPointerRoot, CurrentTime);
 }
 
@@ -60,7 +60,7 @@ int x_error_handler(Display *dpy, XErrorEvent *error) {
 
 void nwm::manage_window(Window window, Base &base) {
     XWindowAttributes attr;
-    
+
     if (XGetWindowAttributes(base.display, window, &attr) == 0) {
         std::cerr << "Warning: Window does not exist or is invalid\n";
         return;
@@ -162,6 +162,67 @@ void nwm::focus_prev(void *arg, Base &base) {
     focus_window(&base.windows[prev_idx], base);
 }
 
+void nwm::swap_next(void *arg, Base &base) {
+    (void)arg;
+    if (base.windows.size() < 2) return;
+
+    int current_idx = -1;
+    for (size_t i = 0; i < base.windows.size(); ++i) {
+        if (base.focused_window && base.windows[i].window == base.focused_window->window) {
+            current_idx = i;
+            break;
+        }
+    }
+
+    if (current_idx == -1) return;
+
+    int next_idx = (current_idx + 1) % base.windows.size();
+    std::swap(base.windows[current_idx], base.windows[next_idx]);
+
+    tile_windows(base);
+    // Keep focus on the same window (which is now at next_idx)
+    focus_window(&base.windows[next_idx], base);
+}
+
+void nwm::swap_prev(void *arg, Base &base) {
+    (void)arg;
+    if (base.windows.size() < 2) return;
+
+    int current_idx = -1;
+    for (size_t i = 0; i < base.windows.size(); ++i) {
+        if (base.focused_window && base.windows[i].window == base.focused_window->window) {
+            current_idx = i;
+            break;
+        }
+    }
+
+    if (current_idx == -1) return;
+
+    int prev_idx = (current_idx - 1 + base.windows.size()) % base.windows.size();
+    std::swap(base.windows[current_idx], base.windows[prev_idx]);
+
+    tile_windows(base);
+    // Keep focus on the same window (which is now at prev_idx)
+    focus_window(&base.windows[prev_idx], base);
+}
+
+void nwm::resize_master(void *arg, Base &base) {
+    if (base.windows.size() < 2) return;
+
+    int delta = (int)(long)arg;
+    int screen_width = WIDTH(base.display, base.screen);
+
+    // Calculate new master factor based on pixel delta
+    float delta_factor = (float)delta / screen_width;
+    base.master_factor += delta_factor;
+
+    // Clamp between 0.1 and 0.9 for reasonable bounds
+    if (base.master_factor < 0.1f) base.master_factor = 0.1f;
+    if (base.master_factor > 0.9f) base.master_factor = 0.9f;
+
+    tile_windows(base);
+}
+
 void nwm::move_window(ManagedWindow *window, int x, int y, Base &base) {
     if (window) {
         window->x = x;
@@ -189,24 +250,25 @@ void nwm::tile_windows(Base &base) {
         // single window takes full screen with gaps
         base.windows[0].x = GAP_SIZE;
         base.windows[0].y = GAP_SIZE;
-        base.windows[0].width = screen_width - 2 * GAP_SIZE;
-        base.windows[0].height = screen_height - 2 * GAP_SIZE;
+        base.windows[0].width = screen_width - 2 * GAP_SIZE - 2 * BORDER_WIDTH;
+        base.windows[0].height = screen_height - 2 * GAP_SIZE - 2 * BORDER_WIDTH;
     } else {
-        // master-stack layout
-        int master_width = screen_width / 2 - GAP_SIZE - GAP_SIZE / 2;
-        int stack_width = screen_width / 2 - GAP_SIZE - GAP_SIZE / 2;
-        int stack_height = (screen_height - GAP_SIZE * (num_windows)) / (num_windows - 1);
+        // master-stack layout with adjustable master size
+        int master_width = (int)(screen_width * base.master_factor) - GAP_SIZE - GAP_SIZE / 2 - 2 * BORDER_WIDTH;
+        int stack_x = (int)(screen_width * base.master_factor) + GAP_SIZE / 2;
+        int stack_width = screen_width - stack_x - GAP_SIZE - 2 * BORDER_WIDTH;
+        int stack_height = (screen_height - GAP_SIZE * num_windows) / (num_windows - 1) - 2 * BORDER_WIDTH;
 
         // master window (left)
         base.windows[0].x = GAP_SIZE;
         base.windows[0].y = GAP_SIZE;
         base.windows[0].width = master_width;
-        base.windows[0].height = screen_height - 2 * GAP_SIZE;
+        base.windows[0].height = screen_height - 2 * GAP_SIZE - 2 * BORDER_WIDTH;
 
         // stack windows (right)
         for (size_t i = 1; i < base.windows.size(); ++i) {
-            base.windows[i].x = screen_width / 2 + GAP_SIZE / 2;
-            base.windows[i].y = GAP_SIZE + (i - 1) * (stack_height + GAP_SIZE);
+            base.windows[i].x = stack_x;
+            base.windows[i].y = GAP_SIZE + (i - 1) * (stack_height + GAP_SIZE + 2 * BORDER_WIDTH);
             base.windows[i].width = stack_width;
             base.windows[i].height = stack_height;
         }
@@ -274,8 +336,12 @@ void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
 void nwm::handle_key_press(XKeyEvent *e, Base &base) {
     KeySym keysym = XLookupKeysym(e, 0);
 
+    // Clean the state to ignore NumLock and CapsLock
+    unsigned int cleaned_state = e->state & ~(LockMask | Mod2Mask);
+
     for (auto &k : keys) {
-        if (keysym == k.keysym && (e->state & k.mod) == k.mod) {
+        unsigned int cleaned_mod = k.mod & ~(LockMask | Mod2Mask);
+        if (keysym == k.keysym && cleaned_state == cleaned_mod) {
             if (k.func) {
                 k.func((void*)k.arg, base);
             }
@@ -285,9 +351,38 @@ void nwm::handle_key_press(XKeyEvent *e, Base &base) {
 }
 
 void nwm::reload_config(void *arg, nwm::Base &base) {
-    std::cout << "Recompiling and restarting WM...\n";
-    XCloseDisplay(base.display);
-    execlp("./nwm", "./nwm", NULL);
+    (void)arg;
+    std::cout << "Hot reloading configuration...\n";
+
+    // Save current state
+    std::vector<Window> window_ids;
+    for (const auto &w : base.windows) {
+        window_ids.push_back(w.window);
+    }
+    Window focused = base.focused_window ? base.focused_window->window : None;
+    float master_factor = base.master_factor;
+
+    // Reload keybindings
+    setup_keys(base);
+
+    // Restore master factor in case config changed it
+    base.master_factor = master_factor;
+
+    // Retile with new configuration
+    tile_windows(base);
+
+    // Restore focus
+    if (focused != None) {
+        for (auto &w : base.windows) {
+            if (w.window == focused) {
+                focus_window(&w, base);
+                break;
+            }
+        }
+    }
+
+    XFlush(base.display);
+    std::cout << "Configuration reloaded successfully!\n";
 }
 
 void nwm::handle_button_press(XButtonEvent *e, Base &base) {
@@ -317,7 +412,7 @@ void nwm::init(Base &base) {
     };
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-
+    sigaction(SIGCHLD, &sa, NULL);
 
     base.display = XOpenDisplay(NULL);
     if (!base.display) {
@@ -331,6 +426,7 @@ void nwm::init(Base &base) {
     base.root = RootWindow(base.display, base.screen);
     base.focused_window = nullptr;
     base.running = false;
+    base.master_factor = 0.5f; // Default 50/50 split
     base.cursor = XCreateFontCursor(base.display, XC_left_ptr);
     XDefineCursor(base.display, base.root, base.cursor);
 
@@ -405,7 +501,7 @@ void nwm::run(Base &base) {
     base.running = true;
 
     XSelectInput(base.display, base.root,
-                 SubstructureRedirectMask | SubstructureNotifyMask | 
+                 SubstructureRedirectMask | SubstructureNotifyMask |
                  ButtonPressMask | EnterWindowMask | KeyPressMask);
 
     XSetErrorHandler(x_error_handler);

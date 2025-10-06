@@ -27,6 +27,7 @@ struct Base {
     ManagedWindow* focused_window;
     bool running;
     Cursor cursor;
+    float master_factor;
 
     XftFont* xft_font;
     XftDraw* xft_draw;
@@ -38,13 +39,16 @@ void unmanage_window(Window window, Base &base);
 void focus_window(ManagedWindow* window, Base &base);
 void move_window(ManagedWindow* window, int x, int y, Base &base);
 void resize_window(ManagedWindow* window, int width, int height, Base &base);
+void swap_next(void *arg, Base &base);
+void swap_prev(void *arg, Base &base);
 void tile_windows(Base &base);
 void close_window(void *arg, Base &base);
 void focus_next(void *arg, Base &base);
 void focus_prev(void *arg, Base &base);
 void quit_wm(void *arg, Base &base);
 
-
+void resize_master(void *arg, Base &base);
+void move_window(ManagedWindow *window, int x, int y, Base &base);
 // Event handlers
 void handle_key_press(XKeyEvent *e, Base &base);
 void handle_button_press(XButtonEvent *e, Base &base);
