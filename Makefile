@@ -17,6 +17,8 @@ install: nwm
 	mkdir -p $(BINDIR)
 	install -Dm755 nwm $(BINDIR)/nwm
 	@echo "Installed nwm to $(BINDIR)"
+	@cp picom.conf $(HOME)/.config/
+	@echo "Installed picom.conf to $(HOME)/.config"
 
 clean:
 	rm -rf nwm $(BINDIR)/nwm
