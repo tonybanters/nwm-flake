@@ -2,7 +2,7 @@ CXXFLAG = -std=c++14 -O3 -Werror -Wall -Wpedantic
 SRC    = src/nwm.cpp src/util.cpp src/bar.cpp
 
 IX11   = -I/usr/include/freetype2 
-LX11   = -lX11 -lXft -lfreetype -lfontconfig -lXrender
+LX11   = -lX11 -lXft -lfreetype -lfontconfig -lXrender -lm
 
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin

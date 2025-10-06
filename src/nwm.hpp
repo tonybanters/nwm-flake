@@ -25,7 +25,7 @@ struct ManagedWindow {
 struct Workspace {
     std::vector<ManagedWindow> windows;
     ManagedWindow* focused_window;
-    int scroll_offset;
+    int scroll_offset;  // For horizontal scrolling
 };
 
 struct Base {
@@ -40,7 +40,6 @@ struct Base {
     Cursor cursor;
     float master_factor;
     bool horizontal_mode;
-    int horizontal_scroll;
 
     XftFont* xft_font;
     XftDraw* xft_draw;

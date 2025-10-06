@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <csignal>
+#include <cmath>
 
 int x_error_handler(Display *dpy, XErrorEvent *error) {
     char error_text[1024];
@@ -43,6 +44,11 @@ void nwm::switch_workspace(void *arg, Base &base) {
     int target_ws = *(int*)arg;
     if (target_ws < 0 || target_ws >= NUM_WORKSPACES) return;
     if (target_ws == (int)base.current_workspace) return;
+
+    // Exit overview mode if active
+    if (base.overview_mode) {
+        base.overview_mode = false;
+    }
 
     // Hide windows from current workspace
     for (auto &w : get_current_workspace(base).windows) {
@@ -114,11 +120,18 @@ void nwm::toggle_overview(void *arg, Base &base) {
     base.overview_mode = !base.overview_mode;
 
     if (base.overview_mode) {
-        // Show overview: display all workspaces in a grid
+        // Show overview: display all workspaces in a 3x3 grid
         int ws_per_row = 3;
-        int grid_width = WIDTH(base.display, base.screen) / ws_per_row;
-        int grid_height = HEIGHT(base.display, base.screen) / 3;
+        int ws_per_col = 3;
+        int screen_width = WIDTH(base.display, base.screen);
+        int screen_height = HEIGHT(base.display, base.screen);
         int bar_height = base.bar.height;
+        
+        int grid_width = screen_width / ws_per_row;
+        int grid_height = (screen_height - bar_height) / ws_per_col;
+        
+        // Padding around each workspace preview
+        int preview_padding = 20;
 
         for (size_t ws_idx = 0; ws_idx < base.workspaces.size(); ++ws_idx) {
             int row = ws_idx / ws_per_row;
@@ -127,15 +140,46 @@ void nwm::toggle_overview(void *arg, Base &base) {
             int grid_y = row * grid_height + bar_height;
 
             auto &ws = base.workspaces[ws_idx];
-            for (auto &w : ws.windows) {
-                XMapWindow(base.display, w.window);
+            
+            if (ws.windows.empty()) continue;
+            
+            // Calculate available space for windows in this workspace preview
+            int preview_width = grid_width - 2 * preview_padding;
+            int preview_height = grid_height - 2 * preview_padding;
+            
+            // Tile windows within the preview space
+            int num_windows = ws.windows.size();
+            
+            for (size_t i = 0; i < ws.windows.size(); ++i) {
+                XMapWindow(base.display, ws.windows[i].window);
                 
-                // Scale down and position in grid
-                int scaled_width = grid_width - 40;
-                int scaled_height = grid_height - 40;
-                XMoveResizeWindow(base.display, w.window,
-                                grid_x + 20, grid_y + 20,
-                                scaled_width, scaled_height);
+                int win_width, win_height, win_x, win_y;
+                
+                if (num_windows == 1) {
+                    // Single window takes full preview space
+                    win_width = preview_width;
+                    win_height = preview_height;
+                    win_x = grid_x + preview_padding;
+                    win_y = grid_y + preview_padding;
+                } else {
+                    // Multiple windows: simple grid layout
+                    int cols = (int)ceil(sqrt(num_windows));
+                    int rows = (num_windows + cols - 1) / cols;
+                    
+                    int win_grid_width = preview_width / cols;
+                    int win_grid_height = preview_height / rows;
+                    
+                    int win_col = i % cols;
+                    int win_row = i / cols;
+                    
+                    win_x = grid_x + preview_padding + win_col * win_grid_width + 5;
+                    win_y = grid_y + preview_padding + win_row * win_grid_height + 5;
+                    win_width = win_grid_width - 10;
+                    win_height = win_grid_height - 10;
+                }
+                
+                XMoveResizeWindow(base.display, ws.windows[i].window,
+                                win_x, win_y, win_width, win_height);
             }
         }
     } else {
@@ -154,6 +198,8 @@ void nwm::toggle_overview(void *arg, Base &base) {
             tile_windows(base);
         }
     }
+    
+    XFlush(base.display);
 }
 
 void nwm::setup_keys(nwm::Base &base) {
@@ -207,7 +253,9 @@ void nwm::toggle_gap(void *arg, nwm::Base &base) {
 void nwm::toggle_layout(void *arg, Base &base) {
     (void)arg;
     base.horizontal_mode = !base.horizontal_mode;
-    base.horizontal_scroll = 0;
+    
+    auto &current_ws = get_current_workspace(base);
+    current_ws.scroll_offset = 0;
 
     if (base.horizontal_mode) {
         tile_horizontal(base);
@@ -222,7 +270,8 @@ void nwm::scroll_left(void *arg, Base &base) {
     (void)arg;
     if (!base.horizontal_mode) return;
 
-    base.horizontal_scroll = std::max(0, base.horizontal_scroll - SCROLL_STEP);
+    auto &current_ws = get_current_workspace(base);
+    current_ws.scroll_offset = std::max(0, current_ws.scroll_offset - SCROLL_STEP);
     tile_horizontal(base);
 }
 
@@ -231,11 +280,14 @@ void nwm::scroll_right(void *arg, Base &base) {
     if (!base.horizontal_mode) return;
 
     auto &current_ws = get_current_workspace(base);
-    int max_scroll = current_ws.windows.size() * 
-                     (WIDTH(base.display, base.screen) + GAP_SIZE);
+    int screen_width = WIDTH(base.display, base.screen);
     
-    base.horizontal_scroll = std::min(max_scroll, 
-                                      base.horizontal_scroll + SCROLL_STEP);
+    // Calculate total width of all windows
+    int total_width = current_ws.windows.size() * screen_width;
+    int max_scroll = std::max(0, total_width - screen_width);
+    
+    current_ws.scroll_offset = std::min(max_scroll, 
+                                        current_ws.scroll_offset + SCROLL_STEP);
     tile_horizontal(base);
 }
 
@@ -335,7 +387,17 @@ void nwm::focus_next(void *arg, Base &base) {
     focus_window(&current_ws.windows[next_idx], base);
     
     if (base.horizontal_mode) {
-        base.horizontal_scroll = next_idx * (WIDTH(base.display, base.screen) + GAP_SIZE);
+        // Smooth scroll to focused window
+        int screen_width = WIDTH(base.display, base.screen);
+        int target_scroll = next_idx * screen_width;
+        
+        // Keep focused window visible
+        if (target_scroll < current_ws.scroll_offset) {
+            current_ws.scroll_offset = target_scroll;
+        } else if (target_scroll > current_ws.scroll_offset + screen_width - screen_width) {
+            current_ws.scroll_offset = target_scroll - screen_width + screen_width;
+        }
+        
         tile_horizontal(base);
     }
 }
@@ -357,7 +419,17 @@ void nwm::focus_prev(void *arg, Base &base) {
     focus_window(&current_ws.windows[prev_idx], base);
     
     if (base.horizontal_mode) {
-        base.horizontal_scroll = prev_idx * (WIDTH(base.display, base.screen) + GAP_SIZE);
+        // Smooth scroll to focused window
+        int screen_width = WIDTH(base.display, base.screen);
+        int target_scroll = prev_idx * screen_width;
+        
+        // Keep focused window visible
+        if (target_scroll < current_ws.scroll_offset) {
+            current_ws.scroll_offset = target_scroll;
+        } else if (target_scroll > current_ws.scroll_offset + screen_width - screen_width) {
+            current_ws.scroll_offset = target_scroll - screen_width + screen_width;
+        }
+        
         tile_horizontal(base);
     }
 }
@@ -454,19 +526,27 @@ void nwm::tile_horizontal(Base &base) {
     int screen_width = WIDTH(base.display, base.screen);
     int screen_height = HEIGHT(base.display, base.screen);
     int bar_height = base.bar.height;
+    int usable_height = screen_height - bar_height;
 
+    // Each window takes full screen width and height
     for (size_t i = 0; i < current_ws.windows.size(); ++i) {
-        int x_pos = i * (screen_width + GAP_SIZE) - base.horizontal_scroll + GAP_SIZE;
+        // Calculate position with scroll offset
+        int x_pos = i * screen_width - current_ws.scroll_offset + base.gaps;
+        int y_pos = base.gaps + bar_height;
+        int win_width = screen_width - 2 * base.gaps - 2 * BORDER_WIDTH;
+        int win_height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
         
         current_ws.windows[i].x = x_pos;
-        current_ws.windows[i].y = GAP_SIZE + bar_height;
-        current_ws.windows[i].width = screen_width - 2 * GAP_SIZE - 2 * BORDER_WIDTH;
-        current_ws.windows[i].height = screen_height - 2 * GAP_SIZE - 2 * BORDER_WIDTH - bar_height;
+        current_ws.windows[i].y = y_pos;
+        current_ws.windows[i].width = win_width;
+        current_ws.windows[i].height = win_height;
 
         XMoveResizeWindow(base.display, current_ws.windows[i].window,
                          current_ws.windows[i].x, current_ws.windows[i].y,
                          current_ws.windows[i].width, current_ws.windows[i].height);
     }
+    
+    XFlush(base.display);
 }
 
 void nwm::tile_windows(Base &base) {
@@ -480,24 +560,24 @@ void nwm::tile_windows(Base &base) {
     int usable_height = screen_height - bar_height;
 
     if (num_windows == 1) {
-        current_ws.windows[0].x = GAP_SIZE;
-        current_ws.windows[0].y = GAP_SIZE + bar_height;
-        current_ws.windows[0].width = screen_width - 2 * GAP_SIZE - 2 * BORDER_WIDTH;
-        current_ws.windows[0].height = usable_height - 2 * GAP_SIZE - 2 * BORDER_WIDTH;
+        current_ws.windows[0].x = base.gaps;
+        current_ws.windows[0].y = base.gaps + bar_height;
+        current_ws.windows[0].width = screen_width - 2 * base.gaps - 2 * BORDER_WIDTH;
+        current_ws.windows[0].height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
     } else {
-        int master_width = (int)(screen_width * base.master_factor) - GAP_SIZE - GAP_SIZE / 2 - 2 * BORDER_WIDTH;
-        int stack_x = (int)(screen_width * base.master_factor) + GAP_SIZE / 2;
-        int stack_width = screen_width - stack_x - GAP_SIZE - 2 * BORDER_WIDTH;
-        int stack_height = (usable_height - GAP_SIZE * num_windows) / (num_windows - 1) - 2 * BORDER_WIDTH;
+        int master_width = (int)(screen_width * base.master_factor) - base.gaps - base.gaps / 2 - 2 * BORDER_WIDTH;
+        int stack_x = (int)(screen_width * base.master_factor) + base.gaps / 2;
+        int stack_width = screen_width - stack_x - base.gaps - 2 * BORDER_WIDTH;
+        int stack_height = (usable_height - base.gaps * num_windows) / (num_windows - 1) - 2 * BORDER_WIDTH;
 
-        current_ws.windows[0].x = GAP_SIZE;
-        current_ws.windows[0].y = GAP_SIZE + bar_height;
+        current_ws.windows[0].x = base.gaps;
+        current_ws.windows[0].y = base.gaps + bar_height;
         current_ws.windows[0].width = master_width;
-        current_ws.windows[0].height = usable_height - 2 * GAP_SIZE - 2 * BORDER_WIDTH;
+        current_ws.windows[0].height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
 
         for (size_t i = 1; i < current_ws.windows.size(); ++i) {
             current_ws.windows[i].x = stack_x;
-            current_ws.windows[i].y = GAP_SIZE + bar_height + (i - 1) * (stack_height + GAP_SIZE + 2 * BORDER_WIDTH);
+            current_ws.windows[i].y = base.gaps + bar_height + (i - 1) * (stack_height + base.gaps + 2 * BORDER_WIDTH);
             current_ws.windows[i].width = stack_width;
             current_ws.windows[i].height = stack_height;
         }
@@ -617,6 +697,25 @@ void nwm::reload_config(void *arg, nwm::Base &base) {
 
 void nwm::handle_button_press(XButtonEvent *e, Base &base) {
     if (e->window == base.bar.window) {
+        // Handle workspace clicking in overview mode
+        if (base.overview_mode) {
+            int ws_per_row = 3;
+            int screen_width = WIDTH(base.display, base.screen);
+            int screen_height = HEIGHT(base.display, base.screen);
+            int bar_height = base.bar.height;
+            
+            int grid_width = screen_width / ws_per_row;
+            int grid_height = (screen_height - bar_height) / 3;
+            
+            int clicked_col = e->x / grid_width;
+            int clicked_row = (e->y - bar_height) / grid_height;
+            int clicked_ws = clicked_row * ws_per_row + clicked_col;
+            
+            if (clicked_ws >= 0 && clicked_ws < NUM_WORKSPACES) {
+                int ws = clicked_ws;
+                switch_workspace(&ws, base);
+            }
+        }
         return;
     }
 
@@ -676,7 +775,6 @@ void nwm::init(Base &base) {
     base.running = false;
     base.master_factor = 0.5f;
     base.horizontal_mode = false;
-    base.horizontal_scroll = 0;
     
     base.cursor = XCreateFontCursor(base.display, XC_left_ptr);
     XDefineCursor(base.display, base.root, base.cursor);
