@@ -1,19 +1,19 @@
-CXX    := g++
-CXFLAG := -std=c++14 -O2 -Werror -Wall -Wpedantic
-SRC    := src/nwm.cpp src/util.cpp
+CXX    = g++
+CXFLAG = -std=c++14 -O2 -Werror -Wall -Wpedantic
+SRC    = src/nwm.cpp src/util.cpp
 
-IX11   := -I/usr/include/freetype2 
-LX11   := -lX11 -lXft -lfreetype -lfontconfig
+IX11   = -I/usr/include/freetype2 
+LX11   = -lX11 -lXft -lfreetype -lfontconfig
 
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: default install clean help
+.PHONY: install clean help
 
-default:
+nwm:
 	$(CXX) $(CXFLAG) $(IX11) $(SRC) -o nwm $(LX11)
 
-install: default
+install: nwm
 	mkdir -p $(PREFIX)
 	mkdir -p $(BINDIR)
 	install -Dm755 nwm $(BINDIR)/$(BIN)
