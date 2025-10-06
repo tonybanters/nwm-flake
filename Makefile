@@ -1,5 +1,5 @@
 CXXFLAG = -std=c++14 -O3 -Wall -Wextra -Wpedantic -Werror
-SRC    = src/nwm.cpp src/util.cpp src/bar.cpp
+SRC    = src/nwm.cpp src/bar.cpp
 
 IX11   = -I/usr/include/freetype2 
 LX11   = -lX11 -lXft -lfreetype -lfontconfig -lXrender -lm

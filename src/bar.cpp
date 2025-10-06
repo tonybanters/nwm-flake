@@ -1,6 +1,5 @@
 #include "bar.hpp"
 #include "nwm.hpp"
-#include "util.hpp"
 #include <ctime>
 #include <sstream>
 #include <iomanip>

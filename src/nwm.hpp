@@ -25,7 +25,7 @@ struct ManagedWindow {
 struct Workspace {
     std::vector<ManagedWindow> windows;
     ManagedWindow* focused_window;
-    int scroll_offset;  // For horizontal scrolling
+    int scroll_offset;
 };
 
 struct Base {
@@ -51,7 +51,7 @@ struct Base {
 
     std::vector<std::string> widget;
     
-    // Window dragging state
+    // TODO: window dragging state
     bool dragging;
     Window drag_window;
     int drag_start_x;

@@ -1,6 +1,5 @@
 #include "nwm.hpp"
 #include "config.hpp"
-#include "util.hpp"
 #include "bar.hpp"
 #include <X11/X.h>
 #include <X11/Xlib.h>
@@ -49,16 +48,13 @@ void nwm::switch_workspace(void *arg, Base &base) {
     if (target_ws < 0 || target_ws >= NUM_WORKSPACES) return;
     if (target_ws == (int)base.current_workspace) return;
 
-    // Hide windows from current workspace
     for (auto &w : get_current_workspace(base).windows) {
         XUnmapWindow(base.display, w.window);
     }
 
-    // Switch workspace
     base.current_workspace = target_ws;
     base.focused_window = get_current_workspace(base).focused_window;
 
-    // Show windows from new workspace
     for (auto &w : get_current_workspace(base).windows) {
         XMapWindow(base.display, w.window);
     }
@@ -257,14 +253,11 @@ void nwm::unmanage_window(Window window, Base &base) {
             }
             current_ws.windows.erase(it);
             
-            // Adjust scroll offset if in horizontal mode
             if (base.horizontal_mode) {
                 int screen_width = WIDTH(base.display, base.screen);
                 int window_width = screen_width / 2;
                 int total_width = current_ws.windows.size() * window_width;
                 int max_scroll = std::max(0, total_width - screen_width);
-                
-                // Clamp scroll offset to valid range
                 current_ws.scroll_offset = std::min(current_ws.scroll_offset, max_scroll);
             }
             break;
@@ -311,12 +304,10 @@ void nwm::focus_next(void *arg, Base &base) {
     focus_window(&current_ws.windows[next_idx], base);
     
     if (base.horizontal_mode) {
-        // Smooth scroll to show focused window
         int screen_width = WIDTH(base.display, base.screen);
         int window_width = screen_width / 2;
         int target_scroll = next_idx * window_width;
         
-        // Ensure focused window is visible
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
         } else if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
@@ -344,12 +335,10 @@ void nwm::focus_prev(void *arg, Base &base) {
     focus_window(&current_ws.windows[prev_idx], base);
     
     if (base.horizontal_mode) {
-        // Smooth scroll to show focused window
         int screen_width = WIDTH(base.display, base.screen);
         int window_width = screen_width / 2;
         int target_scroll = prev_idx * window_width;
         
-        // Ensure focused window is visible
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
         } else if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
@@ -454,11 +443,9 @@ void nwm::tile_horizontal(Base &base) {
     int bar_height = base.bar.height;
     int usable_height = screen_height - bar_height;
 
-    // Each window takes half the screen width, laid out horizontally
     int window_width = screen_width / 2;
     
     for (size_t i = 0; i < current_ws.windows.size(); ++i) {
-        // Calculate position with scroll offset applied
         int x_pos = i * window_width - current_ws.scroll_offset + base.gaps;
         int y_pos = base.gaps + bar_height;
         int win_width = window_width - 2 * base.gaps - 2 * BORDER_WIDTH;
@@ -540,19 +527,16 @@ void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
     
     auto &current_ws = get_current_workspace(base);
     
-    // Auto-focus and scroll to the newly opened window
     if (!current_ws.windows.empty()) {
         ManagedWindow *new_window = &current_ws.windows.back();
         focus_window(new_window, base);
         
         if (base.horizontal_mode) {
-            // Scroll to show the new window
             int screen_width = WIDTH(base.display, base.screen);
             int window_width = screen_width / 2;
             int new_window_idx = current_ws.windows.size() - 1;
             int target_scroll = new_window_idx * window_width;
             
-            // Ensure new window is visible on the right side
             if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
                 current_ws.scroll_offset = target_scroll + window_width - screen_width;
             }
@@ -807,7 +791,6 @@ void nwm::init(Base &base) {
         std::exit(1);
     }
 
-    // Load font from config
     base.xft_font = XftFontOpenName(base.display, base.screen, FONT);
     if (!base.xft_font) {
         std::cerr << "Warning: Failed to load font '" << FONT << "', trying fallback\n";
