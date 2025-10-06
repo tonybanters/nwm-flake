@@ -1,8 +1,8 @@
 CXXFLAG = -std=c++14 -O3 -Werror -Wall -Wpedantic
-SRC    = src/nwm.cpp src/util.cpp
+SRC    = src/nwm.cpp src/util.cpp src/bar.cpp
 
 IX11   = -I/usr/include/freetype2 
-LX11   = -lX11 -lXft -lfreetype -lfontconfig
+LX11   = -lX11 -lXft -lfreetype -lfontconfig -lXrender
 
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
@@ -15,7 +15,7 @@ nwm:
 install: nwm
 	mkdir -p $(PREFIX)
 	mkdir -p $(BINDIR)
-	install -Dm755 nwm $(BINDIR)/$(BIN)
+	install -Dm755 nwm $(BINDIR)/nwm
 	@echo "Installed nwm to $(BINDIR)"
 
 clean:

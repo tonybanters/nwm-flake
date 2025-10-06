@@ -5,9 +5,11 @@
 #include <X11/cursorfont.h>
 #include <X11/Xft/Xft.h>
 #include <vector>
+#include "bar.hpp"
 
 #define WIDTH(display, screen_number) XDisplayWidth((display), (screen_number))
 #define HEIGHT(display, screen_number) XDisplayHeight((display), (screen_number))
+#define NUM_WORKSPACES 9
 
 namespace nwm {
 
@@ -17,6 +19,13 @@ struct ManagedWindow {
     int width, height;
     bool is_floating;
     bool is_focused;
+    int workspace;
+};
+
+struct Workspace {
+    std::vector<ManagedWindow> windows;
+    ManagedWindow* focused_window;
+    int scroll_offset;
 };
 
 struct Base {
@@ -30,9 +39,16 @@ struct Base {
     bool running;
     Cursor cursor;
     float master_factor;
+    bool horizontal_mode;
+    int horizontal_scroll;
 
     XftFont* xft_font;
     XftDraw* xft_draw;
+
+    StatusBar bar;
+    std::vector<Workspace> workspaces;
+    size_t current_workspace;
+    bool overview_mode;
 };
 
 // Window management functions
@@ -44,6 +60,7 @@ void resize_window(ManagedWindow* window, int width, int height, Base &base);
 void swap_next(void *arg, Base &base);
 void swap_prev(void *arg, Base &base);
 void tile_windows(Base &base);
+void tile_horizontal(Base &base);
 void close_window(void *arg, Base &base);
 void focus_next(void *arg, Base &base);
 void focus_prev(void *arg, Base &base);
@@ -51,7 +68,18 @@ void quit_wm(void *arg, Base &base);
 
 void resize_master(void *arg, Base &base);
 void toggle_gap(void *arg, Base &base);
+void toggle_layout(void *arg, Base &base);
+void scroll_left(void *arg, Base &base);
+void scroll_right(void *arg, Base &base);
 void move_window(ManagedWindow *window, int x, int y, Base &base);
+
+// Workspace functions
+void switch_workspace(void *arg, Base &base);
+void move_to_workspace(void *arg, Base &base);
+void toggle_overview(void *arg, Base &base);
+void workspace_init(Base &base);
+Workspace& get_current_workspace(Base &base);
+
 // Event handlers
 void handle_key_press(XKeyEvent *e, Base &base);
 void handle_button_press(XButtonEvent *e, Base &base);
@@ -60,6 +88,7 @@ void handle_map_request(XMapRequestEvent *e, Base &base);
 void handle_unmap_notify(XUnmapEvent *e, Base &base);
 void handle_enter_notify(XCrossingEvent *e, Base &base);
 void handle_destroy_notify(XDestroyWindowEvent *e, Base &base);
+void handle_expose(XExposeEvent *e, Base &base);
 
 void reload_config(void *arg, Base &base);
 void spawn(void *arg, Base &base);
