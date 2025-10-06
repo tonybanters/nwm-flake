@@ -1,5 +1,4 @@
-CXX    = g++
-CXFLAG = -std=c++14 -O2 -Werror -Wall -Wpedantic
+CXXFLAG = -std=c++14 -O3 -Werror -Wall -Wpedantic
 SRC    = src/nwm.cpp src/util.cpp
 
 IX11   = -I/usr/include/freetype2 
@@ -11,7 +10,7 @@ BINDIR ?= $(PREFIX)/bin
 .PHONY: install clean help
 
 nwm:
-	$(CXX) $(CXFLAG) $(IX11) $(SRC) -o nwm $(LX11)
+	$(CXX) $(CXXFLAG) $(IX11) $(SRC) -o nwm $(LX11)
 
 install: nwm
 	mkdir -p $(PREFIX)
