@@ -8,9 +8,9 @@
 
 // TODO: Let users customize it here
 
-#define BAR_HEIGHT 20
-#define BAR_BG_COLOR 0x1a1a1a
-#define BAR_FG_COLOR 0xcccccc
+#define BAR_HEIGHT 30
+#define BAR_BG_COLOR 0x1A1A1A
+#define BAR_FG_COLOR 0xCCCCCC
 #define BAR_ACTIVE_COLOR 0xFF5577
 #define BAR_INACTIVE_COLOR 0x666666
 
@@ -118,7 +118,7 @@ void nwm::bar_draw(Base &base) {
 
     // draw workspaces
     for (size_t i = 0; i < base.workspaces.size(); ++i) {
-        std::string ws_label = "[" + std::to_string(i + 1) + "]";
+        std::string ws_label = base.widget[i % base.widget.size()];
         
         XftColor *color = (i == base.current_workspace) ? 
                           &base.bar.xft_active : &base.bar.xft_inactive;
@@ -135,18 +135,22 @@ void nwm::bar_draw(Base &base) {
         x_offset += extents.width + 15;
     }
 
-    // draw layout mode indicator
     x_offset += 20;
-    std::string layout_mode = base.horizontal_mode ? "[HORIZ]" : "[TILE]";
+    std::string layout_mode = base.horizontal_mode ? "" : "󰙀" ;
     XftDrawStringUtf8(base.bar.xft_draw, &base.bar.xft_fg, base.xft_font,
                      x_offset, y_offset,
                      (XftChar8*)layout_mode.c_str(), layout_mode.length());
 
-    // draw time on the right
+    // std::string widget_mode = base.widget;
+    // int widget_x = base.bar.width - widget_mode.size() - 20;
+    // XftDrawStringUtf8(base.bar.xft_draw, &base.bar.xft_fg, base.xft_font,
+    //                  widget_x, y_offset,
+    //                  (XftChar8*)layout_mode.c_str(), widget_mode.length());
+
     time_t now = time(nullptr);
     tm* local = localtime(&now);
     std::ostringstream time_stream;
-    time_stream << std::put_time(local, "%H:%M");
+    time_stream << std::put_time(local, "%H:%M:%S");
     std::string time_str = time_stream.str();
 
     XGlyphInfo time_extents;

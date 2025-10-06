@@ -48,6 +48,8 @@ struct Base {
     std::vector<Workspace> workspaces;
     size_t current_workspace;
     bool overview_mode;
+
+    std::vector<std::string> widget;
     
     // Window dragging state
     bool dragging;

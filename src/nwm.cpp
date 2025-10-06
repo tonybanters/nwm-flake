@@ -648,9 +648,7 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
 
     auto &current_ws = get_current_workspace(base);
     
-    // Check if this is a Super + Left Click on a window
     if (e->button == Button1 && (e->state & MODKEY)) {
-        // Find the window that was clicked
         for (auto &w : current_ws.windows) {
             if (e->window == w.window) {
                 base.dragging = true;
@@ -658,7 +656,6 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
                 base.drag_start_x = e->x_root;
                 base.drag_start_y = e->y_root;
                 
-                // Store the initial window position
                 XWindowAttributes attr;
                 if (XGetWindowAttributes(base.display, w.window, &attr)) {
                     base.drag_window_start_x = attr.x;
@@ -667,7 +664,6 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
                 
                 focus_window(&w, base);
                 
-                // Grab the pointer
                 XGrabPointer(base.display, base.root, False,
                            PointerMotionMask | ButtonReleaseMask,
                            GrabModeAsync, GrabModeAsync,
@@ -676,7 +672,6 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
             }
         }
     } else if (e->button == Button1) {
-        // Normal click - just focus
         for (auto &w : current_ws.windows) {
             if (e->window == w.window) {
                 focus_window(&w, base);
@@ -696,13 +691,11 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
         auto &current_ws = get_current_workspace(base);
         
         if (!base.horizontal_mode) {
-            // Not in horizontal mode, just retile
             tile_windows(base);
             base.drag_window = None;
             return;
         }
         
-        // Find the dragged window
         int dragged_idx = -1;
         for (size_t i = 0; i < current_ws.windows.size(); ++i) {
             if (current_ws.windows[i].window == base.drag_window) {
@@ -716,21 +709,16 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
             return;
         }
         
-        // Calculate which position the window should be dropped at
         int screen_width = WIDTH(base.display, base.screen);
         int window_width = screen_width / 2;
         
-        // Get the center x position of the dragged window based on final mouse position
         int window_center_x = e->x_root;
         
-        // Calculate target index based on drop position (accounting for scroll)
         int target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
         
-        // Clamp to valid range
         if (target_idx < 0) target_idx = 0;
         if (target_idx >= (int)current_ws.windows.size()) target_idx = current_ws.windows.size() - 1;
         
-        // Reorder windows if needed
         if (target_idx != dragged_idx) {
             ManagedWindow dragged_window = current_ws.windows[dragged_idx];
             current_ws.windows.erase(current_ws.windows.begin() + dragged_idx);
@@ -745,7 +733,6 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
 void nwm::handle_motion_notify(XMotionEvent *e, Base &base) {
     if (!base.dragging || base.drag_window == None) return;
     
-    // Visual feedback during drag - move the window with the mouse
     auto &current_ws = get_current_workspace(base);
     for (auto &w : current_ws.windows) {
         if (w.window == base.drag_window) {
@@ -807,6 +794,7 @@ void nwm::init(Base &base) {
     base.running = false;
     base.master_factor = 0.5f;
     base.horizontal_mode = false;
+    base.widget = WIDGET;
     
     base.cursor = XCreateFontCursor(base.display, XC_left_ptr);
     XDefineCursor(base.display, base.root, base.cursor);

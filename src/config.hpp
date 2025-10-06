@@ -4,6 +4,7 @@
 #include <X11/keysym.h>
 #include "nwm.hpp"
 
+
 using namespace nwm;
 
 /* appearance */
@@ -14,7 +15,9 @@ using namespace nwm;
 
 /* font */
 #define FONT                "IosevkaNerdFont:size=12"
-
+static const std::vector<std::string> WIDGET = {
+    " ", "󰊯 ", " ", " ", "󰙯 ", "󱇤 ", " ", "󱘶 ", "󰧮"
+};
 /* resize step size (in pixels) */
 #define RESIZE_STEP         40
 
@@ -28,6 +31,7 @@ using namespace nwm;
 static const char *termcmd[]  = { "st",        NULL };
 static const char *emacs[]    = { "emacs",     NULL };
 static const char *dmenucmd[] = { "dmenu_run", NULL };
+static const char *zoomer[] = { "boomer", NULL };
 static const char *mastecmd[] = { "/home/xsoder/scripts/master", NULL };
 
 /* workspace arguments */
@@ -52,6 +56,7 @@ static struct {
     { MODKEY,             XK_Return,          spawn,          termcmd },
     { MODKEY,             XK_d,               spawn,          dmenucmd },
     { MODKEY,             XK_m,               spawn,          mastecmd },
+    { MODKEY,             XK_z,               spawn,          zoomer },
     { MODKEY,             XK_c,               spawn,          emacs },
     { MODKEY | ShiftMask, XK_r,               reload_config,  NULL },
     { MODKEY,             XK_q,               close_window,   NULL },

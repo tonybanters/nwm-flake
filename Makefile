@@ -1,4 +1,4 @@
-CXXFLAG = -std=c++14 -O3 -Werror -Wall -Wpedantic
+CXXFLAG = -std=c++14 -O3 -Wall -Wextra -Wpedantic -Werror
 SRC    = src/nwm.cpp src/util.cpp src/bar.cpp
 
 IX11   = -I/usr/include/freetype2 
