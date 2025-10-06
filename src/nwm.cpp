@@ -130,7 +130,8 @@ void nwm::focus_window(ManagedWindow *window, Base &base) {
     XFlush(base.display);
 }
 
-void nwm::focus_next(Base &base) {
+void nwm::focus_next(void *arg, Base &base) {
+    (void)arg;
     if (base.windows.empty()) return;
 
     int current_idx = -1;
@@ -145,7 +146,8 @@ void nwm::focus_next(Base &base) {
     focus_window(&base.windows[next_idx], base);
 }
 
-void nwm::focus_prev(Base &base) {
+void nwm::focus_prev(void *arg, Base &base) {
+    (void)arg;
     if (base.windows.empty()) return;
 
     int current_idx = -1;
@@ -215,7 +217,8 @@ void nwm::tile_windows(Base &base) {
     }
 }
 
-void nwm::close_window(Base &base) {
+void nwm::close_window(void *arg, Base &base) {
+    (void)arg;
     if (base.focused_window) {
         XEvent ev;
         ev.type = ClientMessage;
@@ -228,7 +231,8 @@ void nwm::close_window(Base &base) {
     }
 }
 
-void nwm::quit_wm(Base &base) {
+void nwm::quit_wm(void *arg, Base &base) {
+    (void)arg;
     base.running = false;
 }
 
@@ -270,32 +274,20 @@ void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
 void nwm::handle_key_press(XKeyEvent *e, Base &base) {
     KeySym keysym = XLookupKeysym(e, 0);
 
-    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
-        
-        if (keysym == keys[i].keysym &&
-            (e->state & keys[i].mod) == keys[i].mod) {
-            
-            if (keys[i].func) {
-                keys[i].func((void*)keys[i].arg, base);
-            }
-            else if (keysym == XK_c && (e->state & ShiftMask)) {
-                close_window(base);
-            }
-            else if (keysym == XK_j) {
-                focus_next(base);
-            }
-            else if (keysym == XK_k) {
-                focus_prev(base);
-            }
-            else if (keysym == XK_t) {
-                tile_windows(base);
-            }
-            else if (keysym == XK_q && (e->state & ShiftMask)) {
-                quit_wm(base);
+    for (auto &k : keys) {
+        if (keysym == k.keysym && (e->state & k.mod) == k.mod) {
+            if (k.func) {
+                k.func((void*)k.arg, base);
             }
             break;
         }
     }
+}
+
+void nwm::reload_config(void *arg, nwm::Base &base) {
+    std::cout << "Recompiling and restarting WM...\n";
+    XCloseDisplay(base.display);
+    execlp("./nwm", "./nwm", NULL);
 }
 
 void nwm::handle_button_press(XButtonEvent *e, Base &base) {

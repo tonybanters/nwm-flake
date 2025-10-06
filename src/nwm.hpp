@@ -36,13 +36,14 @@ struct Base {
 void manage_window(Window window, Base &base);
 void unmanage_window(Window window, Base &base);
 void focus_window(ManagedWindow* window, Base &base);
-void focus_next(Base &base);
-void focus_prev(Base &base);
 void move_window(ManagedWindow* window, int x, int y, Base &base);
 void resize_window(ManagedWindow* window, int width, int height, Base &base);
 void tile_windows(Base &base);
-void close_window(Base &base);
-void quit_wm(Base &base);
+void close_window(void *arg, Base &base);
+void focus_next(void *arg, Base &base);
+void focus_prev(void *arg, Base &base);
+void quit_wm(void *arg, Base &base);
+
 
 // Event handlers
 void handle_key_press(XKeyEvent *e, Base &base);
@@ -52,6 +53,8 @@ void handle_map_request(XMapRequestEvent *e, Base &base);
 void handle_unmap_notify(XUnmapEvent *e, Base &base);
 void handle_enter_notify(XCrossingEvent *e, Base &base);
 void handle_destroy_notify(XDestroyWindowEvent *e, Base &base);
+
+void reload_config(void *arg, Base &base);
 void spawn(void *arg, Base &base);
 
 // System functions
