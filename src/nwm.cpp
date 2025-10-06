@@ -11,6 +11,43 @@
 #include <algorithm>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <csignal> 
+
+void nwm::setup_keys(nwm::Base &base) {
+    XUngrabKey(base.display, AnyKey, AnyModifier, base.root);
+
+    for (auto &k : keys) {
+        KeyCode code = XKeysymToKeycode(base.display, k.keysym);
+        if (!code) continue;
+
+        unsigned int modifiers[] = {0, LockMask, Mod2Mask, Mod2Mask | LockMask};
+        for (unsigned int mod : modifiers) {
+            XGrabKey(
+                base.display,
+                code,
+                k.mod | mod,
+                base.root,
+                False,
+                GrabModeAsync,
+                GrabModeAsync
+            );
+        }
+    }
+
+    XSync(base.display, False);
+}
+
+void nwm::spawn(void *arg, nwm::Base &base) {
+    const char **cmd = (const char **)arg;
+    if (fork() == 0) {
+        setsid();
+        execvp(cmd[0], (char **)cmd);
+        perror("execvp failed");
+        exit(1);
+    }
+    
+    XSetInputFocus(base.display, base.root, RevertToPointerRoot, CurrentTime);
+}
 
 int x_error_handler(Display *dpy, XErrorEvent *error) {
     char error_text[1024];
@@ -234,18 +271,13 @@ void nwm::handle_key_press(XKeyEvent *e, Base &base) {
     KeySym keysym = XLookupKeysym(e, 0);
 
     for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
+        
         if (keysym == keys[i].keysym &&
             (e->state & keys[i].mod) == keys[i].mod) {
-
-            // handle commands
-            if (keys[i].arg != NULL) {
-                if (fork() == 0) {
-                    setsid();
-                    execvp(keys[i].arg[0], (char**)keys[i].arg);
-                    exit(0);
-                }
+            
+            if (keys[i].func) {
+                keys[i].func((void*)keys[i].arg, base);
             }
-            // handle actions
             else if (keysym == XK_c && (e->state & ShiftMask)) {
                 close_window(base);
             }
@@ -287,6 +319,14 @@ void nwm::handle_enter_notify(XCrossingEvent *e, Base &base) {
 }
 
 void nwm::init(Base &base) {
+    struct sigaction sa;
+    sa.sa_handler = [](int) {
+        while (waitpid(-1, NULL, WNOHANG) > 0);
+    };
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+
+
     base.display = XOpenDisplay(NULL);
     if (!base.display) {
         std::cerr << "Error: Cannot open display\n";
@@ -318,6 +358,29 @@ void nwm::init(Base &base) {
         std::cerr << "Error: Failed to load Xft font\n";
         std::exit(1);
     }
+
+    XSelectInput(base.display, base.root,
+                 SubstructureRedirectMask | SubstructureNotifyMask |
+                 ButtonPressMask | EnterWindowMask | KeyPressMask);
+
+    Window root_return, parent_return;
+    Window *children;
+    unsigned int nchildren;
+
+    if (XQueryTree(base.display, base.root, &root_return, &parent_return, &children, &nchildren)) {
+        for (unsigned int i = 0; i < nchildren; ++i) {
+            XWindowAttributes attr;
+            if (XGetWindowAttributes(base.display, children[i], &attr)) {
+                if (!attr.override_redirect && attr.map_state == IsViewable) {
+                    nwm::manage_window(children[i], base);
+                }
+            }
+        }
+        if (children) XFree(children);
+    }
+
+    nwm::tile_windows(base);
+    nwm::setup_keys(base);
 }
 
 void nwm::cleanup(Base &base) {

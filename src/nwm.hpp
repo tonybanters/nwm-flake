@@ -52,6 +52,7 @@ void handle_map_request(XMapRequestEvent *e, Base &base);
 void handle_unmap_notify(XUnmapEvent *e, Base &base);
 void handle_enter_notify(XCrossingEvent *e, Base &base);
 void handle_destroy_notify(XDestroyWindowEvent *e, Base &base);
+void spawn(void *arg, Base &base);
 
 // System functions
 void setup_keys(Base &base);

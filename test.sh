@@ -15,9 +15,10 @@ xset q | grep "Font Path"
 ./nwm &
 WM_PID=$!
 sleep 2
-xclock &
+feh --bg-fill /home/xsoder/wallpaper/master.png &
+#xclock &
 sleep 2
-st &
+#st &
 echo "Window manager is running in Xephyr"
 echo "Press Ctrl+C to stop"
 echo ""
