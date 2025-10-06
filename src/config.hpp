@@ -37,6 +37,8 @@ static struct {
     { MODKEY,             XK_m,               spawn,          mastecmd },
     { MODKEY | ShiftMask, XK_r,               reload_config,  NULL },
     { MODKEY,             XK_q,               close_window,   NULL },
+    // TODO: Figure out why the gap toggler is not working
+    { MODKEY,             XK_a,               toggle_gap,     NULL },
     { MODKEY,             XK_j,               focus_next,     NULL },
     { MODKEY,             XK_k,               focus_prev,     NULL },
     { MODKEY | ShiftMask, XK_h,               swap_prev,      NULL },

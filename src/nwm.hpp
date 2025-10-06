@@ -21,6 +21,8 @@ struct ManagedWindow {
 
 struct Base {
     int screen;
+    int gaps;
+    bool gaps_enabled;
     Window root;
     Display *display;
     std::vector<ManagedWindow> windows;
@@ -48,6 +50,7 @@ void focus_prev(void *arg, Base &base);
 void quit_wm(void *arg, Base &base);
 
 void resize_master(void *arg, Base &base);
+void toggle_gap(void *arg, Base &base);
 void move_window(ManagedWindow *window, int x, int y, Base &base);
 // Event handlers
 void handle_key_press(XKeyEvent *e, Base &base);

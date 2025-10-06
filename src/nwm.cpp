@@ -49,6 +49,13 @@ void nwm::spawn(void *arg, nwm::Base &base) {
     XSetInputFocus(base.display, base.root, RevertToPointerRoot, CurrentTime);
 }
 
+void nwm::toggle_gap(void *arg, nwm::Base &base) {
+    (void)arg;
+    base.gaps_enabled = !base.gaps_enabled;
+    base.gaps = base.gaps_enabled ? GAP_SIZE : 0;
+    nwm::tile_windows(base);
+}
+
 int x_error_handler(Display *dpy, XErrorEvent *error) {
     char error_text[1024];
     XGetErrorText(dpy, error->error_code, error_text, sizeof(error_text));
@@ -79,8 +86,8 @@ void nwm::manage_window(Window window, Base &base) {
 
     ManagedWindow w;
     w.window = window;
-    w.x = GAP_SIZE;
-    w.y = GAP_SIZE;
+    w.x = base.gaps;
+    w.y = base.gaps;
     w.width = WIDTH(base.display, base.screen) / 2;
     w.height = HEIGHT(base.display, base.screen) / 2;
     w.is_floating = false;
@@ -422,6 +429,8 @@ void nwm::init(Base &base) {
 
     XSetErrorHandler(x_error_handler);
 
+    base.gaps_enabled = true;
+    base.gaps = GAP_SIZE;
     base.screen = DefaultScreen(base.display);
     base.root = RootWindow(base.display, base.screen);
     base.focused_window = nullptr;
