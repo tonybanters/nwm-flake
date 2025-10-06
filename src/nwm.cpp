@@ -1,210 +1,399 @@
 #include "nwm.hpp"
-#include "api.hpp"
+#include "config.hpp"
+#include "util.hpp"
 #include <X11/X.h>
 #include <X11/Xlib.h>
-#include <cassert>
+#include <X11/Xutil.h>
+#include <X11/cursorfont.h>
+#include <X11/Xft/Xft.h>
 #include <cstdlib>
 #include <iostream>
-#include <sys/stat.h>
+#include <algorithm>
+#include <unistd.h>
+#include <sys/wait.h>
+
+int x_error_handler(Display *dpy, XErrorEvent *error) {
+    char error_text[1024];
+    XGetErrorText(dpy, error->error_code, error_text, sizeof(error_text));
+    std::cerr << "X Error: " << error_text
+              << " Request code: " << (int)error->request_code
+              << " Resource ID: " << error->resourceid << std::endl;
+    return 0;
+}
 
 void nwm::manage_window(Window window, Base &base) {
-  ManagedWindow w;
-  w.window = window;
-  w.x = 0;
-  w.y = 0;
-  w.width = WIDTH(base.display, base.screen) / 2;
-  w.height = HEIGHT(base.display, base.screen) / 2;
-  w.is_floating = false;
-  w.is_focused = false;
+    XWindowAttributes attr;
+    
+    if (XGetWindowAttributes(base.display, window, &attr) == 0) {
+        std::cerr << "Warning: Window does not exist or is invalid\n";
+        return;
+    }
 
-  base.windows.push_back(w);
+    // ignore for menu and stuff like that
+    if (attr.override_redirect) {
+        return;
+    }
 
-  // Set window attributes
-  XSetWindowAttributes attrs;
-  attrs.event_mask = EnterWindowMask | LeaveWindowMask | PropertyChangeMask |
-                     StructureNotifyMask | SubstructureRedirectMask;
-  XChangeWindowAttributes(base.display, window, CWEventMask, &attrs);
+    for (const auto &w : base.windows) {
+        if (w.window == window) {
+            return;
+        }
+    }
 
-  // Add border
-  XSetWindowBorder(base.display, window, BORDER_WIDTH);
-  XSetWindowBorderWidth(base.display, window, BORDER_WIDTH);
+    ManagedWindow w;
+    w.window = window;
+    w.x = GAP_SIZE;
+    w.y = GAP_SIZE;
+    w.width = WIDTH(base.display, base.screen) / 2;
+    w.height = HEIGHT(base.display, base.screen) / 2;
+    w.is_floating = false;
+    w.is_focused = false;
 
-  // Map the window
-  XMapWindow(base.display, window);
+    base.windows.push_back(w);
+
+    // set window attributes
+    XSetWindowAttributes attrs;
+    attrs.event_mask = EnterWindowMask | LeaveWindowMask | PropertyChangeMask |
+                       StructureNotifyMask;
+    XChangeWindowAttributes(base.display, window, CWEventMask, &attrs);
+    XFlush(base.display);
+
+    XSetWindowBorder(base.display, window, BORDER_COLOR);
+    XSetWindowBorderWidth(base.display, window, BORDER_WIDTH);
+
+    XMapWindow(base.display, window);
 }
 
 void nwm::unmanage_window(Window window, Base &base) {
-  for (auto it = base.windows.begin(); it != base.windows.end(); ++it) {
-    if (it->window == window) {
-      base.windows.erase(it);
-      break;
+    for (auto it = base.windows.begin(); it != base.windows.end(); ++it) {
+        if (it->window == window) {
+            if (base.focused_window && base.focused_window->window == window) {
+                base.focused_window = nullptr;
+            }
+            base.windows.erase(it);
+            break;
+        }
     }
-  }
 }
 
 void nwm::focus_window(ManagedWindow *window, Base &base) {
-  if (base.focused_window) {
-    XSetWindowBorder(base.display, base.focused_window->window, BORDER_WIDTH);
-    base.focused_window->is_focused = false;
-  }
+    if (base.focused_window) {
+        XSetWindowBorder(base.display, base.focused_window->window, BORDER_COLOR);
+        base.focused_window->is_focused = false;
+    }
 
-  base.focused_window = window;
-  if (window) {
-    XSetWindowBorder(base.display, window->window, BORDER_WIDTH * 2);
-    XSetInputFocus(base.display, window->window, RevertToPointerRoot,
-                   CurrentTime);
-    window->is_focused = true;
-  }
+    base.focused_window = nullptr;
+    if (window) {
+        base.focused_window = window;
+        XSetWindowBorder(base.display, window->window, FOCUS_COLOR);
+        XRaiseWindow(base.display, window->window);
+        XSetInputFocus(base.display, window->window, RevertToPointerRoot, CurrentTime);
+        window->is_focused = true;
+    }
+    XFlush(base.display);
+}
+
+void nwm::focus_next(Base &base) {
+    if (base.windows.empty()) return;
+
+    int current_idx = -1;
+    for (size_t i = 0; i < base.windows.size(); ++i) {
+        if (base.focused_window && base.windows[i].window == base.focused_window->window) {
+            current_idx = i;
+            break;
+        }
+    }
+
+    int next_idx = (current_idx + 1) % base.windows.size();
+    focus_window(&base.windows[next_idx], base);
+}
+
+void nwm::focus_prev(Base &base) {
+    if (base.windows.empty()) return;
+
+    int current_idx = -1;
+    for (size_t i = 0; i < base.windows.size(); ++i) {
+        if (base.focused_window && base.windows[i].window == base.focused_window->window) {
+            current_idx = i;
+            break;
+        }
+    }
+
+    int prev_idx = (current_idx - 1 + base.windows.size()) % base.windows.size();
+    focus_window(&base.windows[prev_idx], base);
 }
 
 void nwm::move_window(ManagedWindow *window, int x, int y, Base &base) {
-  if (window) {
-    window->x = x;
-    window->y = y;
-    XMoveWindow(base.display, window->window, x, y);
-  }
+    if (window) {
+        window->x = x;
+        window->y = y;
+        XMoveWindow(base.display, window->window, x, y);
+    }
 }
 
 void nwm::resize_window(ManagedWindow *window, int width, int height, Base &base) {
-  if (window) {
-    window->width = width;
-    window->height = height;
-    XResizeWindow(base.display, window->window, width, height);
-  }
+    if (window) {
+        window->width = width;
+        window->height = height;
+        XResizeWindow(base.display, window->window, width, height);
+    }
 }
 
 void nwm::tile_windows(Base &base) {
-  int num_windows = base.windows.size();
-  if (num_windows == 0)
-    return;
+    int num_windows = base.windows.size();
+    if (num_windows == 0) return;
 
-  int screen_width = WIDTH(base.display, base.screen);
-  int screen_height = HEIGHT(base.display, base.screen);
-  int window_width = screen_width / num_windows;
+    int screen_width = WIDTH(base.display, base.screen);
+    int screen_height = HEIGHT(base.display, base.screen);
 
-  for (size_t i = 0; i < base.windows.size(); ++i) {
-    base.windows[i].x = i * window_width;
-    base.windows[i].y = 0;
-    base.windows[i].width = window_width;
-    base.windows[i].height = screen_height;
+    if (num_windows == 1) {
+        // single window takes full screen with gaps
+        base.windows[0].x = GAP_SIZE;
+        base.windows[0].y = GAP_SIZE;
+        base.windows[0].width = screen_width - 2 * GAP_SIZE;
+        base.windows[0].height = screen_height - 2 * GAP_SIZE;
+    } else {
+        // master-stack layout
+        int master_width = screen_width / 2 - GAP_SIZE - GAP_SIZE / 2;
+        int stack_width = screen_width / 2 - GAP_SIZE - GAP_SIZE / 2;
+        int stack_height = (screen_height - GAP_SIZE * (num_windows)) / (num_windows - 1);
 
-    XMoveResizeWindow(base.display, base.windows[i].window, base.windows[i].x,
-                      base.windows[i].y, base.windows[i].width,
-                      base.windows[i].height);
-  }
+        // master window (left)
+        base.windows[0].x = GAP_SIZE;
+        base.windows[0].y = GAP_SIZE;
+        base.windows[0].width = master_width;
+        base.windows[0].height = screen_height - 2 * GAP_SIZE;
+
+        // stack windows (right)
+        for (size_t i = 1; i < base.windows.size(); ++i) {
+            base.windows[i].x = screen_width / 2 + GAP_SIZE / 2;
+            base.windows[i].y = GAP_SIZE + (i - 1) * (stack_height + GAP_SIZE);
+            base.windows[i].width = stack_width;
+            base.windows[i].height = stack_height;
+        }
+    }
+
+    for (auto &w : base.windows) {
+        XMoveResizeWindow(base.display, w.window, w.x, w.y, w.width, w.height);
+    }
 }
 
-void nwm::handle_map_request(XMapRequestEvent *e, Base &base,
-                        application::app &apps) {
-  manage_window(e->window, base);
-  tile_windows(base);
+void nwm::close_window(Base &base) {
+    if (base.focused_window) {
+        XEvent ev;
+        ev.type = ClientMessage;
+        ev.xclient.window = base.focused_window->window;
+        ev.xclient.message_type = XInternAtom(base.display, "WM_PROTOCOLS", True);
+        ev.xclient.format = 32;
+        ev.xclient.data.l[0] = XInternAtom(base.display, "WM_DELETE_WINDOW", False);
+        ev.xclient.data.l[1] = CurrentTime;
+        XSendEvent(base.display, base.focused_window->window, False, NoEventMask, &ev);
+    }
+}
+
+void nwm::quit_wm(Base &base) {
+    base.running = false;
+}
+
+void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
+    manage_window(e->window, base);
+    tile_windows(base);
+    focus_window(&base.windows.back(), base);
 }
 
 void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
-  unmanage_window(e->window, base);
-  tile_windows(base);
+    unmanage_window(e->window, base);
+    tile_windows(base);
+    if (!base.windows.empty() && !base.focused_window) {
+        focus_window(&base.windows[0], base);
+    }
 }
 
 void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
-  unmanage_window(e->window, base);
-  tile_windows(base);
+    unmanage_window(e->window, base);
+    tile_windows(base);
+    if (!base.windows.empty() && !base.focused_window) {
+        focus_window(&base.windows[0], base);
+    }
 }
 
 void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
-  XWindowChanges wc;
-  wc.x = e->x;
-  wc.y = e->y;
-  wc.width = e->width;
-  wc.height = e->height;
-  wc.border_width = e->border_width;
-  wc.sibling = e->above;
-  wc.stack_mode = e->detail;
+    XWindowChanges wc;
+    wc.x = e->x;
+    wc.y = e->y;
+    wc.width = e->width;
+    wc.height = e->height;
+    wc.border_width = e->border_width;
+    wc.sibling = e->above;
+    wc.stack_mode = e->detail;
 
-  XConfigureWindow(base.display, e->window, e->value_mask, &wc);
+    XConfigureWindow(base.display, e->window, e->value_mask, &wc);
 }
 
-void nwm::handle_key_press(XKeyEvent *e, Base &base, application::app &apps) {
-  // TODO: Implement key press handling
-  // This should handle keyboard shortcuts and window management commands
-}
+void nwm::handle_key_press(XKeyEvent *e, Base &base) {
+    KeySym keysym = XLookupKeysym(e, 0);
 
-void nwm::handle_button_press(XButtonEvent *e, Base &base, application::app &apps) {
-  // TODO: Implement button press handling
-  // This should handle mouse button events for window management
-}
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
+        if (keysym == keys[i].keysym &&
+            (e->state & keys[i].mod) == keys[i].mod) {
 
-void nwm::update(De &env, Base &base, application::app &apps) {
-  // Set up event mask for root window
-  XSelectInput(base.display, base.root,
-               SubstructureRedirectMask | SubstructureNotifyMask |
-                   ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
-                   EnterWindowMask | LeaveWindowMask | KeyPressMask |
-                   PropertyChangeMask);
-
-  // Initialize focused window
-  base.focused_window = nullptr;
-
-  // Load Lua configuration
-  load_lua(apps);
-
-  // Main event loop
-  while (true) {
-    XNextEvent(base.display, env.event);
-
-    switch (env.event->type) {
-    case MapRequest:
-      handle_map_request(&env.event->xmaprequest, base, apps);
-      break;
-    case UnmapNotify:
-      handle_unmap_notify(&env.event->xunmap, base);
-      break;
-    case DestroyNotify:
-      handle_destroy_notify(&env.event->xdestroywindow, base);
-      break;
-    case ConfigureRequest:
-      handle_configure_request(&env.event->xconfigurerequest, base);
-      break;
-    case KeyPress:
-      handle_key_press(&env.event->xkey, base, apps);
-      break;
-    case ButtonPress:
-      handle_button_press(&env.event->xbutton, base, apps);
-      break;
+            // handle commands
+            if (keys[i].arg != NULL) {
+                if (fork() == 0) {
+                    setsid();
+                    execvp(keys[i].arg[0], (char**)keys[i].arg);
+                    exit(0);
+                }
+            }
+            // handle actions
+            else if (keysym == XK_c && (e->state & ShiftMask)) {
+                close_window(base);
+            }
+            else if (keysym == XK_j) {
+                focus_next(base);
+            }
+            else if (keysym == XK_k) {
+                focus_prev(base);
+            }
+            else if (keysym == XK_t) {
+                tile_windows(base);
+            }
+            else if (keysym == XK_q && (e->state & ShiftMask)) {
+                quit_wm(base);
+            }
+            break;
+        }
     }
-  }
 }
 
-void nwm::file_check(Base &test) {
-  std::string cmd = "touch ";
-  std::string config = "~/.config/nwm/nwm.lua ";
-  cmd = cmd + config;
-  system(cmd.c_str());
-  std::cout << "File created successfully" << std::endl;
+void nwm::handle_button_press(XButtonEvent *e, Base &base) {
+    if (e->button == Button1) {
+        for (auto &w : base.windows) {
+            if (e->window == w.window) {
+                focus_window(&w, base);
+                break;
+            }
+        }
+    }
 }
 
-void nwm::init(Base &test) {
-  test.display = XOpenDisplay(NULL);
-  if (test.display == NULL) {
-    std::cerr << "Display connection could not be initialized\n";
-    std::exit(1);
-  }
-  test.screen = DefaultScreen(test.display);
-  test.root = RootWindow(test.display, test.screen);
+void nwm::handle_enter_notify(XCrossingEvent *e, Base &base) {
+    for (auto &w : base.windows) {
+        if (e->window == w.window) {
+            focus_window(&w, base);
+            break;
+        }
+    }
 }
 
-void nwm::clean(Base &test, De &env) {
-  XUnmapWindow(test.display, env.window);
-  XDestroyWindow(test.display, env.window);
-  XCloseDisplay(test.display);
+void nwm::init(Base &base) {
+    base.display = XOpenDisplay(NULL);
+    if (!base.display) {
+        std::cerr << "Error: Cannot open display\n";
+        std::exit(1);
+    }
+
+    XSetErrorHandler(x_error_handler);
+
+    base.screen = DefaultScreen(base.display);
+    base.root = RootWindow(base.display, base.screen);
+    base.focused_window = nullptr;
+    base.running = false;
+    base.cursor = XCreateFontCursor(base.display, XC_left_ptr);
+    XDefineCursor(base.display, base.root, base.cursor);
+
+    base.xft_draw = XftDrawCreate(base.display, base.root,
+                                 DefaultVisual(base.display, base.screen),
+                                 DefaultColormap(base.display, base.screen));
+    if (!base.xft_draw) {
+        std::cerr << "Error: Failed to create XftDraw\n";
+        std::exit(1);
+    }
+
+    base.xft_font = XftFontOpenName(base.display, base.screen, "monospace:size=12");
+    if (!base.xft_font) {
+        base.xft_font = XftFontOpenName(base.display, base.screen, "fixed");
+    }
+    if (!base.xft_font) {
+        std::cerr << "Error: Failed to load Xft font\n";
+        std::exit(1);
+    }
+}
+
+void nwm::cleanup(Base &base) {
+    for (auto &w : base.windows) {
+        XUnmapWindow(base.display, w.window);
+    }
+
+    if (base.xft_font) {
+        XftFontClose(base.display, base.xft_font);
+        base.xft_font = nullptr;
+    }
+
+    if (base.xft_draw) {
+        XftDrawDestroy(base.xft_draw);
+        base.xft_draw = nullptr;
+    }
+
+    if (base.cursor) {
+        XFreeCursor(base.display, base.cursor);
+        base.cursor = 0;
+    }
+
+    if (base.display) {
+        XCloseDisplay(base.display);
+        base.display = nullptr;
+    }
+}
+
+void nwm::run(Base &base) {
+    base.running = true;
+
+    XSelectInput(base.display, base.root,
+                 SubstructureRedirectMask | SubstructureNotifyMask | 
+                 ButtonPressMask | EnterWindowMask | KeyPressMask);
+
+    XSetErrorHandler(x_error_handler);
+
+    while (base.running) {
+        while (XPending(base.display)) {
+            XEvent e;
+            XNextEvent(base.display, &e);
+
+            switch (e.type) {
+                case MapRequest:
+                    handle_map_request(&e.xmaprequest, base);
+                    break;
+                case UnmapNotify:
+                    handle_unmap_notify(&e.xunmap, base);
+                    break;
+                case DestroyNotify:
+                    handle_destroy_notify(&e.xdestroywindow, base);
+                    break;
+                case ConfigureRequest:
+                    handle_configure_request(&e.xconfigurerequest, base);
+                    break;
+                case KeyPress:
+                    handle_key_press(&e.xkey, base);
+                    break;
+                case ButtonPress:
+                    handle_button_press(&e.xbutton, base);
+                    break;
+                case EnterNotify:
+                    handle_enter_notify(&e.xcrossing, base);
+                    break;
+                default:
+                    break;
+            }
+        }
+        usleep(10000);
+    }
 }
 
 int main(void) {
-  setenv("DISPLAY", ":0", 1);
-  application::app a;
-  nwm::De x;
-  nwm::Base y;
-  nwm::init(y);
-  nwm::update(x, y, a);
-  nwm::clean(y, x);
-  return 0;
+    nwm::Base wm;
+    nwm::init(wm);
+    nwm::run(wm);
+    nwm::cleanup(wm);
+    return 0;
 }

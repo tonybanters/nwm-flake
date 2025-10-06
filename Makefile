@@ -1,27 +1,28 @@
-CC=g++
-CFLAGS=-Werror -Wall
-SRC=src/*.cpp
-BIN=nwm
-ILUA=-I/usr/include/lua5.4
-LLUA=-llua -ldl -lm
-IX11=-I/usr/include/X11
-LX11=-lX11
-THIRDPARTY=-Ithirdparty/
-PREFIX=/usr/local
-BINDIR=$(PREFIX)/bin
-HELP=@echo "Run make build to build the project"
+CXX    := g++
+CXFLAG := -std=c++14 -Werror -Wall -Wpedantic -O2 
+SRC    := src/nwm.cpp src/util.cpp
+
+IX11   := -I/usr/include/freetype2 
+LX11   := -lX11 -lXft -lfreetype -lfontconfig
+
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
 
 .PHONY: default build install clean help
 
-default:
-	$(CC) $(CFLAGS) $(ILUA) $(IX11) $(SRC) $(LLUA) $(LX11) -o $(BIN)
+default: build
+
 build:
-	$(CC) $(CFLAGS) $(THIRDPARTY) $(ILUA) $(IX11) $(SRC) $(LLUA) $(LX11) -o $(BIN)
+	$(CXX) $(CXFLAG) $(IX11) $(SRC) -o nwm $(LX11)
+
 install: build
 	install -Dm755 $(BIN) $(BINDIR)/$(BIN)
 	@echo "Installed $(BIN) to $(BINDIR)"
+
 clean:
 	rm -rf $(BIN)
-help:
-	$(HELP)
 
+help:
+	@echo "Run 'make build' to build the project"
+	@echo "Run 'make install' to install to $(BINDIR)"
+	@echo "Run 'make clean' to remove binary"
