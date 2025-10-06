@@ -16,7 +16,7 @@ using namespace nwm;
 #define RESIZE_STEP         40
 
 /* key definitions */
-#define MODKEY Mod4Mask  // Alt key
+#define MODKEY Mod4Mask  // Win key
 
 /* commands */
 static const char *termcmd[]  = { "st",        NULL };
@@ -39,11 +39,11 @@ static struct {
     { MODKEY,             XK_q,               close_window,   NULL },
     { MODKEY,             XK_j,               focus_next,     NULL },
     { MODKEY,             XK_k,               focus_prev,     NULL },
-    { MODKEY,             XK_h,               swap_prev,      NULL },
-    { MODKEY,             XK_l,               swap_next,      NULL },
-    { MODKEY | ShiftMask, XK_h,               resize_master,  (void*)-RESIZE_STEP },
-    { MODKEY | ShiftMask, XK_l,               resize_master,  (void*)RESIZE_STEP },
-    { MODKEY | ShiftMask, XK_c,               quit_wm,        NULL },
+    { MODKEY | ShiftMask, XK_h,               swap_prev,      NULL },
+    { MODKEY | ShiftMask, XK_l,               swap_next,      NULL },
+    { MODKEY,             XK_h,               resize_master,  (void*)-RESIZE_STEP },
+    { MODKEY,             XK_l,               resize_master,  (void*)RESIZE_STEP },
+    { MODKEY | ShiftMask, XK_q,               quit_wm,        NULL },
     { MODKEY ,            XK_c,               spawn,          emacs },
 };
 
