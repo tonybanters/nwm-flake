@@ -13,7 +13,9 @@ BINDIR ?= $(PREFIX)/bin
 default: build
 
 build:
-	$(CXX) $(CXFLAG) $(IX11) $(SRC) -o nwm $(LX11)
+	mkdir -p $(PREFIX)
+	mkdir -p $(BINDIR)
+	$(CXX) $(CXFLAG) $(IX11) $(SRC) -o $(BINDIR)/nwm $(LX11)
 
 install: build
 	install -Dm755 $(BIN) $(BINDIR)/$(BIN)
