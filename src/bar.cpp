@@ -4,14 +4,23 @@
 #include <sstream>
 #include <iomanip>
 #include <X11/Xlib.h>
-
-// TODO: Let users customize it here
+#include <sys/utsname.h>
+#include <fstream>
 
 #define BAR_HEIGHT 30
 #define BAR_BG_COLOR 0x1A1A1A
 #define BAR_FG_COLOR 0xCCCCCC
 #define BAR_ACTIVE_COLOR 0xFF5577
 #define BAR_INACTIVE_COLOR 0x666666
+#define BAR_ACCENT_COLOR 0x88AAFF
+
+std::string get_kernel_version() {
+    struct utsname buffer;
+    if (uname(&buffer) == 0) {
+        return std::string(buffer.release);
+    }
+    return "Unknown";
+}
 
 void nwm::bar_init(Base &base) {
     base.bar.height = BAR_HEIGHT;
@@ -84,6 +93,16 @@ void nwm::bar_init(Base &base) {
     XftColorAllocValue(base.display, DefaultVisual(base.display, base.screen),
                        DefaultColormap(base.display, base.screen),
                        &xrender_inactive, &base.bar.xft_inactive);
+
+    XRenderColor xrender_accent = {
+        (unsigned short)((BAR_ACCENT_COLOR >> 16) & 0xFF) * 257,
+        (unsigned short)((BAR_ACCENT_COLOR >> 8) & 0xFF) * 257,
+        (unsigned short)(BAR_ACCENT_COLOR & 0xFF) * 257,
+        65535
+    };
+    XftColorAllocValue(base.display, DefaultVisual(base.display, base.screen),
+                       DefaultColormap(base.display, base.screen),
+                       &xrender_accent, &base.bar.xft_accent);
 }
 
 void nwm::bar_cleanup(Base &base) {
@@ -100,6 +119,8 @@ void nwm::bar_cleanup(Base &base) {
                  DefaultColormap(base.display, base.screen), &base.bar.xft_active);
     XftColorFree(base.display, DefaultVisual(base.display, base.screen),
                  DefaultColormap(base.display, base.screen), &base.bar.xft_inactive);
+    XftColorFree(base.display, DefaultVisual(base.display, base.screen),
+                 DefaultColormap(base.display, base.screen), &base.bar.xft_accent);
 
     if (base.bar.window) {
         XDestroyWindow(base.display, base.bar.window);
@@ -115,7 +136,7 @@ void nwm::bar_draw(Base &base) {
     int x_offset = 10;
     int y_offset = BAR_HEIGHT / 2 + 5;
 
-    // draw workspaces
+    // Draw workspaces (left side)
     for (size_t i = 0; i < base.workspaces.size(); ++i) {
         std::string ws_label = base.widget[i % base.widget.size()];
         
@@ -134,33 +155,45 @@ void nwm::bar_draw(Base &base) {
         x_offset += extents.width + 15;
     }
 
+    // Layout mode indicator
     x_offset += 20;
-    std::string layout_mode = base.horizontal_mode ? "" : "󰙀" ;
+    std::string layout_mode = base.horizontal_mode ? "" : "󰙀";
     XftDrawStringUtf8(base.bar.xft_draw, &base.bar.xft_fg, base.xft_font,
                      x_offset, y_offset,
                      (XftChar8*)layout_mode.c_str(), layout_mode.length());
 
-    // std::string widget_mode = base.widget;
-    // int widget_x = base.bar.width - widget_mode.size() - 20;
-    // XftDrawStringUtf8(base.bar.xft_draw, &base.bar.xft_fg, base.xft_font,
-    //                  widget_x, y_offset,
-    //                  (XftChar8*)layout_mode.c_str(), widget_mode.length());
-
+    // Calendar/Date in the center
     time_t now = time(nullptr);
     tm* local = localtime(&now);
-    std::ostringstream time_stream;
-    time_stream << std::put_time(local, "%H:%M:%S");
-    std::string time_str = time_stream.str();
+    std::ostringstream date_stream;
+    date_stream << " " << std::put_time(local, "%a %b %d, %Y");
+    std::string date_str = date_stream.str();
 
-    XGlyphInfo time_extents;
+    XGlyphInfo date_extents;
     XftTextExtentsUtf8(base.display, base.xft_font,
-                      (XftChar8*)time_str.c_str(), time_str.length(),
-                      &time_extents);
+                      (XftChar8*)date_str.c_str(), date_str.length(),
+                      &date_extents);
 
-    int time_x = base.bar.width - time_extents.width - 10;
+    int date_x = (base.bar.width - date_extents.width) / 2;
+    XftDrawStringUtf8(base.bar.xft_draw, &base.bar.xft_accent, base.xft_font,
+                     date_x, y_offset,
+                     (XftChar8*)date_str.c_str(), date_str.length());
+
+    // Right side: System info
+    std::ostringstream sysinfo_stream;
+    std::string kernel = get_kernel_version();
+    sysinfo_stream << "  NWM |  " << kernel;
+    std::string sysinfo_str = sysinfo_stream.str();
+
+    XGlyphInfo sysinfo_extents;
+    XftTextExtentsUtf8(base.display, base.xft_font,
+                      (XftChar8*)sysinfo_str.c_str(), sysinfo_str.length(),
+                      &sysinfo_extents);
+
+    int sysinfo_x = base.bar.width - sysinfo_extents.width - 10;
     XftDrawStringUtf8(base.bar.xft_draw, &base.bar.xft_fg, base.xft_font,
-                     time_x, y_offset,
-                     (XftChar8*)time_str.c_str(), time_str.length());
+                     sysinfo_x, y_offset,
+                     (XftChar8*)sysinfo_str.c_str(), sysinfo_str.length());
 
     XFlush(base.display);
 }

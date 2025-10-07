@@ -16,23 +16,27 @@ using namespace nwm;
 /* font */
 #define FONT                "IosevkaNerdFont:size=12"
 static const std::vector<std::string> WIDGET = {
-    " ", "󰊯 ", " ", " ", "󰙯 ", "󱇤 ", " ", "󱘶 ", "󰧮"
+    " "," "," "," "," "," "," ","󰕧 ","󰙯 " 
 };
+
 /* resize step size (in pixels) */
-#define RESIZE_STEP         40
+#define RESIZE_STEP         20
 
 /* horizontal scroll step (in pixels) */
-#define SCROLL_STEP         800
+#define SCROLL_STEP         900
 
 /* key definitions */
 #define MODKEY Mod4Mask  // Win key
 
 /* commands */
-static const char *termcmd[]  = { "st",        NULL };
-static const char *emacs[]    = { "emacs",     NULL };
-static const char *dmenucmd[] = { "dmenu_run", NULL };
-static const char *zoomer[] = { "boomer", NULL };
-static const char *mastecmd[] = { "/home/xsoder/scripts/master", NULL };
+static const char *termcmd[]    = { "st",        NULL };
+static const char *emacs[]      = { "emacs",     NULL };
+static const char *dmenucmd[]   = { "dmenu_run", NULL };
+static const char *zoomer[]     = { "boomer"   , NULL };
+static const char *browser[]    = { "firefox",   NULL };
+static const char *mastecmd[]   = { "/home/xsoder/scripts/master", NULL };
+static const char *screenshot[]   = { "/home/xsoder/scripts/screenshot", NULL };
+
 
 /* workspace arguments */
 static const int ws0 = 0;
@@ -58,6 +62,8 @@ static struct {
     { MODKEY,             XK_m,               spawn,          mastecmd },
     { MODKEY,             XK_z,               spawn,          zoomer },
     { MODKEY,             XK_c,               spawn,          emacs },
+    { MODKEY,             XK_b,               spawn,          browser },
+    { MODKEY,             XK_s,               spawn,          screenshot },
     { MODKEY | ShiftMask, XK_r,               reload_config,  NULL },
     { MODKEY,             XK_q,               close_window,   NULL },
     { MODKEY,             XK_a,               toggle_gap,     NULL },

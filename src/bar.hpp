@@ -19,6 +19,7 @@ struct StatusBar {
     XftColor xft_bg;
     XftColor xft_active;
     XftColor xft_inactive;
+    XftColor xft_accent;
 };
 
 void bar_init(Base &base);
