@@ -40,6 +40,10 @@ struct Base {
     Cursor cursor;
     float master_factor;
     bool horizontal_mode;
+    bool bar_visible;
+    int resizing;
+    int resize_start_width;
+    int resize_start_height;
 
     XftFont* xft_font;
     XftDraw* xft_draw;
@@ -62,6 +66,7 @@ struct Base {
 
 // Window management functions
 void manage_window(Window window, Base &base);
+void handle_mouse_scroll(XButtonEvent *e, Base &base);
 void unmanage_window(Window window, Base &base);
 void focus_window(ManagedWindow* window, Base &base);
 void move_window(ManagedWindow* window, int x, int y, Base &base);
@@ -102,7 +107,7 @@ void handle_expose(XExposeEvent *e, Base &base);
 
 void reload_config(void *arg, Base &base);
 void spawn(void *arg, Base &base);
-
+void toggle_bar(void *arg, Base &base);
 // System functions
 void setup_keys(Base &base);
 void run(Base &base);

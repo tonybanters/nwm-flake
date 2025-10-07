@@ -136,7 +136,6 @@ void nwm::bar_draw(Base &base) {
     int x_offset = 10;
     int y_offset = BAR_HEIGHT / 2 + 5;
 
-    // Draw workspaces (left side)
     for (size_t i = 0; i < base.workspaces.size(); ++i) {
         std::string ws_label = base.widget[i % base.widget.size()];
         
@@ -155,14 +154,12 @@ void nwm::bar_draw(Base &base) {
         x_offset += extents.width + 15;
     }
 
-    // Layout mode indicator
     x_offset += 20;
-    std::string layout_mode = base.horizontal_mode ? "" : "󰙀";
+    std::string layout_mode = base.horizontal_mode ? "[SCROLL]" : "[TILE]";
     XftDrawStringUtf8(base.bar.xft_draw, &base.bar.xft_fg, base.xft_font,
                      x_offset, y_offset,
                      (XftChar8*)layout_mode.c_str(), layout_mode.length());
 
-    // Calendar/Date in the center
     time_t now = time(nullptr);
     tm* local = localtime(&now);
     std::ostringstream date_stream;
@@ -179,7 +176,6 @@ void nwm::bar_draw(Base &base) {
                      date_x, y_offset,
                      (XftChar8*)date_str.c_str(), date_str.length());
 
-    // Right side: System info
     std::ostringstream sysinfo_stream;
     std::string kernel = get_kernel_version();
     sysinfo_stream << "  NWM |  " << kernel;

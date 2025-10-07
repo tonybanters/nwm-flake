@@ -23,7 +23,7 @@ static const std::vector<std::string> WIDGET = {
 #define RESIZE_STEP         20
 
 /* horizontal scroll step (in pixels) */
-#define SCROLL_STEP         900
+#define SCROLL_STEP         400
 
 /* key definitions */
 #define MODKEY Mod4Mask  // Win key
@@ -64,7 +64,7 @@ static struct {
     { MODKEY,             XK_c,               spawn,          emacs },
     { MODKEY,             XK_b,               spawn,          browser },
     { MODKEY,             XK_s,               spawn,          screenshot },
-    { MODKEY | ShiftMask, XK_r,               reload_config,  NULL },
+    { MODKEY,             XK_r,               toggle_bar,     NULL },
     { MODKEY,             XK_q,               close_window,   NULL },
     { MODKEY,             XK_a,               toggle_gap,     NULL },
     { MODKEY,             XK_t,               toggle_layout,  NULL },
