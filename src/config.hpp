@@ -15,9 +15,14 @@ using namespace nwm;
 
 /* font */
 #define FONT                "IosevkaNerdFont:size=12"
+// static const std::vector<std::string> WIDGET = {
+//     " "," "," "," "," "," "," ","󰕧 ","󰙯 " 
+// };
+
 static const std::vector<std::string> WIDGET = {
-    " "," "," "," "," "," "," ","󰕧 ","󰙯 " 
+    "1","2","3","4","5","6","7","8","9" 
 };
+
 
 /* resize step size (in pixels) */
 #define RESIZE_STEP         20
@@ -33,9 +38,10 @@ static const char *termcmd[]    = { "st",        NULL };
 static const char *emacs[]      = { "emacs",     NULL };
 static const char *dmenucmd[]   = { "dmenu_run", NULL };
 static const char *zoomer[]     = { "boomer"   , NULL };
-static const char *browser[]    = { "firefox",   NULL };
+static const char *browser[]    = { "chromium",   NULL };
 static const char *mastecmd[]   = { "/home/xsoder/scripts/master", NULL };
 static const char *screenshot[]   = { "/home/xsoder/scripts/screenshot", NULL };
+static const char *screenshot_select[]   = { "/home/xsoder/scripts/screenshot-select", NULL };
 
 
 /* workspace arguments */
@@ -64,6 +70,7 @@ static struct {
     { MODKEY,             XK_c,               spawn,          emacs },
     { MODKEY,             XK_b,               spawn,          browser },
     { MODKEY,             XK_s,               spawn,          screenshot },
+    { MODKEY|ShiftMask,   XK_s,               spawn,          screenshot_select },
     { MODKEY,             XK_r,               toggle_bar,     NULL },
     { MODKEY,             XK_q,               close_window,   NULL },
     { MODKEY,             XK_a,               toggle_gap,     NULL },
