@@ -886,7 +886,8 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
                 }
             }
             
-            if (!is_floating && base.horizontal_mode && current_ws.windows.size() > 1) {
+            // Handle tiled window reordering for both modes
+            if (!is_floating && current_ws.windows.size() > 1) {
                 int dragged_idx = -1;
                 
                 for (size_t i = 0; i < current_ws.windows.size(); ++i) {
@@ -897,16 +898,62 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
                 }
                 
                 if (dragged_idx != -1) {
-                    int screen_width = WIDTH(base.display, base.screen);
-                    int window_width = screen_width / 2;
+                    int target_idx = -1;
                     
-                    int window_center_x = e->x_root;
+                    if (base.horizontal_mode) {
+                        // Horizontal scroll mode logic
+                        int screen_width = WIDTH(base.display, base.screen);
+                        int window_width = screen_width / 2;
+                        int window_center_x = e->x_root;
+                        target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
+                    } else {
+                        // Tile mode logic - determine position based on mouse location
+                        int screen_width = WIDTH(base.display, base.screen);
+                        int screen_height = HEIGHT(base.display, base.screen);
+                        int bar_height = base.bar_visible ? base.bar.height : 0;
+                        
+                        // Count non-floating windows to determine layout
+                        int tiled_count = 0;
+                        for (auto &w : current_ws.windows) {
+                            if (!w.is_floating) tiled_count++;
+                        }
+                        
+                        if (tiled_count == 1) {
+                            // Only one window, no reordering needed
+                            target_idx = dragged_idx;
+                        } else {
+                            // Determine if dragged to master area or stack area
+                            int master_width = (int)(screen_width * base.master_factor);
+                            
+                            if (e->x_root < master_width / 2) {
+                                // Dragged to master position (leftmost)
+                                target_idx = 0;
+                            } else if (e->x_root > master_width) {
+                                // Dragged to stack area
+                                // Calculate which stack position based on Y coordinate
+                                int usable_height = screen_height - bar_height;
+                                int stack_window_height = usable_height / (tiled_count - 1);
+                                int relative_y = e->y_root - bar_height;
+                                
+                                // Determine which stack window this corresponds to (1-indexed in window list)
+                                int stack_idx = relative_y / stack_window_height;
+                                target_idx = std::min(std::max(1, stack_idx + 1), tiled_count - 1);
+                            } else {
+                                // Middle area - decide based on Y position if master or first stack
+                                if (e->y_root < (screen_height / 2)) {
+                                    target_idx = 0; // Master
+                                } else {
+                                    target_idx = 1; // First stack position
+                                }
+                            }
+                        }
+                    }
                     
-                    int target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
-                    
+                    // Clamp target index
                     if (target_idx < 0) target_idx = 0;
                     if (target_idx >= (int)current_ws.windows.size()) target_idx = current_ws.windows.size() - 1;
                     
+                    // Perform the swap if position changed
                     if (target_idx != dragged_idx) {
                         ManagedWindow dragged_window = current_ws.windows[dragged_idx];
                         current_ws.windows.erase(current_ws.windows.begin() + dragged_idx);
