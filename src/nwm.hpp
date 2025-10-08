@@ -41,7 +41,7 @@ struct Base {
     float master_factor;
     bool horizontal_mode;
     bool bar_visible;
-    int resizing;
+    bool resizing;
     int resize_start_width;
     int resize_start_height;
 
@@ -55,45 +55,38 @@ struct Base {
 
     std::vector<std::string> widget;
     
-    // TODO: window dragging state
     bool dragging;
     Window drag_window;
     int drag_start_x;
     int drag_start_y;
     int drag_window_start_x;
     int drag_window_start_y;
+    
+    int border_width;
+    unsigned long border_color;
+    unsigned long focus_color;
+    int resize_step;
+    int scroll_step;
 };
 
-// Window management functions
 void manage_window(Window window, Base &base);
-void handle_mouse_scroll(XButtonEvent *e, Base &base);
 void unmanage_window(Window window, Base &base);
 void focus_window(ManagedWindow* window, Base &base);
 void move_window(ManagedWindow* window, int x, int y, Base &base);
 void resize_window(ManagedWindow* window, int width, int height, Base &base);
-void swap_next(void *arg, Base &base);
-void swap_prev(void *arg, Base &base);
-void tile_windows(Base &base);
-void tile_horizontal(Base &base);
 void close_window(void *arg, Base &base);
 void focus_next(void *arg, Base &base);
 void focus_prev(void *arg, Base &base);
 void quit_wm(void *arg, Base &base);
-
-void resize_master(void *arg, Base &base);
 void toggle_gap(void *arg, Base &base);
-void toggle_layout(void *arg, Base &base);
-void scroll_left(void *arg, Base &base);
-void scroll_right(void *arg, Base &base);
-void move_window(ManagedWindow *window, int x, int y, Base &base);
+void toggle_bar(void *arg, Base &base);
+void toggle_float(void *arg, Base &base);
 
-// Workspace functions
 void switch_workspace(void *arg, Base &base);
 void move_to_workspace(void *arg, Base &base);
 void workspace_init(Base &base);
 Workspace& get_current_workspace(Base &base);
 
-// Event handlers
 void handle_key_press(XKeyEvent *e, Base &base);
 void handle_button_press(XButtonEvent *e, Base &base);
 void handle_button_release(XButtonEvent *e, Base &base);
@@ -107,8 +100,6 @@ void handle_expose(XExposeEvent *e, Base &base);
 
 void reload_config(void *arg, Base &base);
 void spawn(void *arg, Base &base);
-void toggle_bar(void *arg, Base &base);
-// System functions
 void setup_keys(Base &base);
 void run(Base &base);
 void init(Base &base);

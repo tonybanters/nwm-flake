@@ -1,6 +1,7 @@
 #include "nwm.hpp"
 #include "config.hpp"
 #include "bar.hpp"
+#include "tiling.hpp"
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -26,6 +27,11 @@ int x_error_handler(Display *dpy, XErrorEvent *error) {
 }
 
 bool should_float(Display *display, Window window) {
+    XWindowAttributes attr;
+    if (!XGetWindowAttributes(display, window, &attr)) {
+        return false;
+    }
+    
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
@@ -41,15 +47,8 @@ bool should_float(Display *display, Window window) {
         Atom dialog = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DIALOG", False);
         Atom splash = XInternAtom(display, "_NET_WM_WINDOW_TYPE_SPLASH", False);
         Atom utility = XInternAtom(display, "_NET_WM_WINDOW_TYPE_UTILITY", False);
-        Atom toolbar = XInternAtom(display, "_NET_WM_WINDOW_TYPE_TOOLBAR", False);
-        Atom menu = XInternAtom(display, "_NET_WM_WINDOW_TYPE_MENU", False);
-        Atom dropdown = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU", False);
-        Atom popup = XInternAtom(display, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
-        Atom notification = XInternAtom(display, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
         
-        if (type == dialog || type == splash || type == utility || 
-            type == toolbar || type == menu || type == dropdown || 
-            type == popup || type == notification) {
+        if (type == dialog || type == splash || type == utility) {
             return true;
         }
     }
@@ -60,9 +59,10 @@ bool should_float(Display *display, Window window) {
                           &nitems, &bytes_after, &prop) == Success && prop) {
         Atom *states = (Atom*)prop;
         Atom modal = XInternAtom(display, "_NET_WM_STATE_MODAL", False);
+        Atom above = XInternAtom(display, "_NET_WM_STATE_ABOVE", False);
         
         for (unsigned long i = 0; i < nitems; i++) {
-            if (states[i] == modal) {
+            if (states[i] == modal || states[i] == above) {
                 XFree(prop);
                 return true;
             }
@@ -72,12 +72,7 @@ bool should_float(Display *display, Window window) {
     
     Window transient_for;
     if (XGetTransientForHint(display, window, &transient_for)) {
-        return true;
-    }
-    
-    XWindowAttributes attr;
-    if (XGetWindowAttributes(display, window, &attr)) {
-        if (attr.override_redirect) {
+        if (transient_for != None && transient_for != window) {
             return true;
         }
     }
@@ -87,9 +82,55 @@ bool should_float(Display *display, Window window) {
     if (XGetWMNormalHints(display, window, &hints, &supplied)) {
         if ((hints.flags & PMaxSize) && (hints.flags & PMinSize)) {
             if (hints.max_width == hints.min_width && 
-                hints.max_height == hints.min_height) {
+                hints.max_height == hints.min_height &&
+                hints.max_width < 800 && hints.max_height < 600) {
                 return true;
             }
+        }
+    }
+    
+    return false;
+}
+
+bool should_ignore_window(Display *display, Window window) {
+    XWindowAttributes attr;
+    if (!XGetWindowAttributes(display, window, &attr)) {
+        return true;
+    }
+
+    if (attr.override_redirect) {
+        return true;
+    }
+    
+    if (attr.c_class == InputOnly) {
+        return true;
+    }
+
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop = nullptr;
+    
+    Atom window_type_atom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+    if (XGetWindowProperty(display, window, window_type_atom, 0, 1,
+                          False, XA_ATOM, &actual_type, &actual_format,
+                          &nitems, &bytes_after, &prop) == Success && prop) {
+        Atom type = *(Atom*)prop;
+        XFree(prop);
+        
+        Atom dock = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", False);
+        Atom desktop = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+        Atom notification = XInternAtom(display, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+        Atom tooltip = XInternAtom(display, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
+        Atom combo = XInternAtom(display, "_NET_WM_WINDOW_TYPE_COMBO", False);
+        Atom dnd = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DND", False);
+        Atom dropdown = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU", False);
+        Atom popup = XInternAtom(display, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
+        
+        if (type == dock || type == desktop || type == notification || 
+            type == tooltip || type == combo || type == dnd ||
+            type == dropdown || type == popup) {
+            return true;
         }
     }
     
@@ -122,9 +163,7 @@ void nwm::switch_workspace(void *arg, Base &base) {
     if (target_ws == (int)base.current_workspace) return;
 
     for (auto &w : get_current_workspace(base).windows) {
-        if (!w.is_floating) {
-            XUnmapWindow(base.display, w.window);
-        }
+        XUnmapWindow(base.display, w.window);
     }
 
     base.current_workspace = target_ws;
@@ -269,67 +308,51 @@ void nwm::toggle_bar(void *arg, Base &base) {
     XFlush(base.display);
 }
 
-void nwm::toggle_layout(void *arg, Base &base) {
+void nwm::toggle_float(void *arg, Base &base) {
     (void)arg;
-    base.horizontal_mode = !base.horizontal_mode;
+    if (!base.focused_window) return;
     
     auto &current_ws = get_current_workspace(base);
-    current_ws.scroll_offset = 0;
-
+    for (auto &w : current_ws.windows) {
+        if (w.window == base.focused_window->window) {
+            w.is_floating = !w.is_floating;
+            
+            if (w.is_floating) {
+                int screen_width = WIDTH(base.display, base.screen);
+                int screen_height = HEIGHT(base.display, base.screen);
+                w.width = screen_width / 2;
+                w.height = screen_height / 2;
+                w.x = (screen_width - w.width) / 2;
+                w.y = (screen_height - w.height) / 2;
+                
+                XSetWindowBorderWidth(base.display, w.window, 2);
+                XSetWindowBorder(base.display, w.window, base.focus_color);
+                XMoveResizeWindow(base.display, w.window, w.x, w.y, w.width, w.height);
+                XRaiseWindow(base.display, w.window);
+                XSetInputFocus(base.display, w.window, RevertToPointerRoot, CurrentTime);
+            } else {
+                XSetWindowBorderWidth(base.display, w.window, base.border_width);
+                XSetWindowBorder(base.display, w.window, base.focus_color);
+            }
+            break;
+        }
+    }
+    
     if (base.horizontal_mode) {
         tile_horizontal(base);
     } else {
         tile_windows(base);
     }
-    
-    for (auto &w : current_ws.windows) {
-        if (w.is_floating) {
-            XRaiseWindow(base.display, w.window);
-        }
-    }
-    
-    if (base.focused_window) {
-        XRaiseWindow(base.display, base.focused_window->window);
-    }
-    
-    XFlush(base.display);
-    bar_draw(base);
-}
-
-void nwm::scroll_left(void *arg, Base &base) {
-    (void)arg;
-    if (!base.horizontal_mode) return;
-
-    auto &current_ws = get_current_workspace(base);
-    current_ws.scroll_offset = std::max(0, current_ws.scroll_offset - (SCROLL_STEP / 3));
-    tile_horizontal(base);
-}
-
-void nwm::scroll_right(void *arg, Base &base) {
-    (void)arg;
-    if (!base.horizontal_mode) return;
-
-    auto &current_ws = get_current_workspace(base);
-    int screen_width = WIDTH(base.display, base.screen);
-    int window_width = screen_width / 2;
-    
-    int total_width = current_ws.windows.size() * window_width;
-    int max_scroll = std::max(0, total_width - screen_width);
-    
-    current_ws.scroll_offset = std::min(max_scroll, 
-                                        current_ws.scroll_offset + (SCROLL_STEP / 3));
-    tile_horizontal(base);
 }
 
 void nwm::manage_window(Window window, Base &base) {
     XWindowAttributes attr;
 
     if (XGetWindowAttributes(base.display, window, &attr) == 0) {
-        std::cerr << "Warning: Window does not exist or is invalid\n";
         return;
     }
 
-    if (attr.override_redirect) {
+    if (should_ignore_window(base.display, window)) {
         return;
     }
 
@@ -356,20 +379,31 @@ void nwm::manage_window(Window window, Base &base) {
                 w.width = hints.width;
                 w.height = hints.height;
             } else {
-                w.width = attr.width;
-                w.height = attr.height;
+                w.width = attr.width > 0 ? attr.width : 400;
+                w.height = attr.height > 0 ? attr.height : 300;
+            }
+            
+            if (hints.flags & (PPosition | USPosition)) {
+                w.x = hints.x;
+                w.y = hints.y;
+            } else {
+                int screen_width = WIDTH(base.display, base.screen);
+                int screen_height = HEIGHT(base.display, base.screen);
+                w.x = (screen_width - w.width) / 2;
+                w.y = (screen_height - w.height) / 2;
             }
         } else {
-            w.width = attr.width;
-            w.height = attr.height;
+            w.width = attr.width > 0 ? attr.width : 400;
+            w.height = attr.height > 0 ? attr.height : 300;
+            int screen_width = WIDTH(base.display, base.screen);
+            int screen_height = HEIGHT(base.display, base.screen);
+            w.x = (screen_width - w.width) / 2;
+            w.y = (screen_height - w.height) / 2;
         }
         
-        int screen_width = WIDTH(base.display, base.screen);
-        int screen_height = HEIGHT(base.display, base.screen);
-        w.x = (screen_width - w.width) / 2;
-        w.y = (screen_height - w.height) / 2;
-        
-        XMoveResizeWindow(base.display, window, w.x, w.y, w.width, w.height);
+        if (w.x != attr.x || w.y != attr.y || w.width != attr.width || w.height != attr.height) {
+            XMoveResizeWindow(base.display, window, w.x, w.y, w.width, w.height);
+        }
     } else {
         w.x = base.gaps;
         w.y = base.gaps + base.bar.height;
@@ -381,62 +415,95 @@ void nwm::manage_window(Window window, Base &base) {
 
     XSetWindowAttributes attrs;
     attrs.event_mask = EnterWindowMask | LeaveWindowMask | PropertyChangeMask |
-                       StructureNotifyMask;
+                       StructureNotifyMask | FocusChangeMask;
     XChangeWindowAttributes(base.display, window, CWEventMask, &attrs);
-    XFlush(base.display);
 
-    XSetWindowBorder(base.display, window, BORDER_COLOR);
-    XSetWindowBorderWidth(base.display, window, is_float ? 1 : BORDER_WIDTH);
+    XSetWindowBorder(base.display, window, base.border_color);
+    XSetWindowBorderWidth(base.display, window, is_float ? 1 : base.border_width);
 
     XMapWindow(base.display, window);
     
     if (is_float) {
         XRaiseWindow(base.display, window);
     }
+    
+    XFlush(base.display);
 }
 
 void nwm::unmanage_window(Window window, Base &base) {
     auto &current_ws = get_current_workspace(base);
-    for (auto it = current_ws.windows.begin(); it != current_ws.windows.end(); ++it) {
-        if (it->window == window) {
-            if (current_ws.focused_window && current_ws.focused_window->window == window) {
-                current_ws.focused_window = nullptr;
-                base.focused_window = nullptr;
-            }
-            current_ws.windows.erase(it);
-            
-            if (base.horizontal_mode) {
-                int screen_width = WIDTH(base.display, base.screen);
-                int window_width = screen_width / 2;
-                int total_width = current_ws.windows.size() * window_width;
-                int max_scroll = std::max(0, total_width - screen_width);
-                current_ws.scroll_offset = std::min(current_ws.scroll_offset, max_scroll);
-            }
+    
+    int closed_idx = -1;
+    for (size_t i = 0; i < current_ws.windows.size(); ++i) {
+        if (current_ws.windows[i].window == window) {
+            closed_idx = i;
             break;
         }
+    }
+    
+    if (closed_idx == -1) return;
+    
+    bool was_focused = (current_ws.focused_window && 
+                       current_ws.focused_window->window == window);
+    
+    current_ws.windows.erase(current_ws.windows.begin() + closed_idx);
+    
+    if (was_focused) {
+        current_ws.focused_window = nullptr;
+        base.focused_window = nullptr;
+        
+        if (!current_ws.windows.empty()) {
+            int new_focus_idx = closed_idx > 0 ? closed_idx - 1 : 0;
+            if (new_focus_idx >= (int)current_ws.windows.size()) {
+                new_focus_idx = current_ws.windows.size() - 1;
+            }
+            focus_window(&current_ws.windows[new_focus_idx], base);
+        }
+    }
+    
+    if (base.horizontal_mode) {
+        int screen_width = WIDTH(base.display, base.screen);
+        int window_width = screen_width / 2;
+        int total_width = current_ws.windows.size() * window_width;
+        int max_scroll = std::max(0, total_width - screen_width);
+        current_ws.scroll_offset = std::min(current_ws.scroll_offset, max_scroll);
     }
 }
 
 void nwm::focus_window(ManagedWindow *window, Base &base) {
     auto &current_ws = get_current_workspace(base);
     
-    if (current_ws.focused_window) {
-        XSetWindowBorder(base.display, current_ws.focused_window->window, BORDER_COLOR);
-        current_ws.focused_window->is_focused = false;
+    for (auto &w : current_ws.windows) {
+        if (!w.is_floating) {
+            XSetWindowBorder(base.display, w.window, base.border_color);
+        }
+        w.is_focused = false;
     }
-
+    
     current_ws.focused_window = nullptr;
     base.focused_window = nullptr;
     
     if (window) {
         current_ws.focused_window = window;
         base.focused_window = window;
-        XSetWindowBorder(base.display, window->window, FOCUS_COLOR);
-        XRaiseWindow(base.display, window->window);
-        XSetInputFocus(base.display, window->window, RevertToPointerRoot, CurrentTime);
         window->is_focused = true;
+        
+        if (!window->is_floating) {
+            XSetWindowBorder(base.display, window->window, base.focus_color);
+        }
+        
+        XSetInputFocus(base.display, window->window, RevertToPointerRoot, CurrentTime);
+        
+        for (auto &w : current_ws.windows) {
+            if (w.is_floating) {
+                XRaiseWindow(base.display, w.window);
+            }
+        }
+        
+        XFlush(base.display);
+    } else {
+        XSetInputFocus(base.display, base.root, RevertToPointerRoot, CurrentTime);
     }
-    XFlush(base.display);
 }
 
 void nwm::focus_next(void *arg, Base &base) {
@@ -444,30 +511,37 @@ void nwm::focus_next(void *arg, Base &base) {
     auto &current_ws = get_current_workspace(base);
     if (current_ws.windows.empty()) return;
 
-    std::vector<ManagedWindow*> tiled_windows;
+    std::vector<ManagedWindow*> all_windows;
     for (auto &w : current_ws.windows) {
-        if (!w.is_floating) {
-            tiled_windows.push_back(&w);
-        }
+        all_windows.push_back(&w);
     }
     
-    if (tiled_windows.empty()) return;
+    if (all_windows.empty()) return;
 
     int current_idx = -1;
-    for (size_t i = 0; i < tiled_windows.size(); ++i) {
-        if (current_ws.focused_window && tiled_windows[i]->window == current_ws.focused_window->window) {
+    for (size_t i = 0; i < all_windows.size(); ++i) {
+        if (current_ws.focused_window && all_windows[i]->window == current_ws.focused_window->window) {
             current_idx = i;
             break;
         }
     }
 
-    int next_idx = (current_idx + 1) % tiled_windows.size();
-    focus_window(tiled_windows[next_idx], base);
+    int next_idx = (current_idx + 1) % all_windows.size();
+    focus_window(all_windows[next_idx], base);
     
-    if (base.horizontal_mode) {
+    if (base.horizontal_mode && !all_windows[next_idx]->is_floating) {
         int screen_width = WIDTH(base.display, base.screen);
         int window_width = screen_width / 2;
-        int target_scroll = next_idx * window_width;
+        
+        int tiled_idx = 0;
+        for (int i = 0; i <= next_idx; ++i) {
+            if (!all_windows[i]->is_floating) {
+                if (i == next_idx) break;
+                tiled_idx++;
+            }
+        }
+        
+        int target_scroll = tiled_idx * window_width;
         
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
@@ -484,30 +558,37 @@ void nwm::focus_prev(void *arg, Base &base) {
     auto &current_ws = get_current_workspace(base);
     if (current_ws.windows.empty()) return;
 
-    std::vector<ManagedWindow*> tiled_windows;
+    std::vector<ManagedWindow*> all_windows;
     for (auto &w : current_ws.windows) {
-        if (!w.is_floating) {
-            tiled_windows.push_back(&w);
-        }
+        all_windows.push_back(&w);
     }
     
-    if (tiled_windows.empty()) return;
+    if (all_windows.empty()) return;
 
     int current_idx = -1;
-    for (size_t i = 0; i < tiled_windows.size(); ++i) {
-        if (current_ws.focused_window && tiled_windows[i]->window == current_ws.focused_window->window) {
+    for (size_t i = 0; i < all_windows.size(); ++i) {
+        if (current_ws.focused_window && all_windows[i]->window == current_ws.focused_window->window) {
             current_idx = i;
             break;
         }
     }
 
-    int prev_idx = (current_idx - 1 + tiled_windows.size()) % tiled_windows.size();
-    focus_window(tiled_windows[prev_idx], base);
+    int prev_idx = (current_idx - 1 + all_windows.size()) % all_windows.size();
+    focus_window(all_windows[prev_idx], base);
     
-    if (base.horizontal_mode) {
+    if (base.horizontal_mode && !all_windows[prev_idx]->is_floating) {
         int screen_width = WIDTH(base.display, base.screen);
         int window_width = screen_width / 2;
-        int target_scroll = prev_idx * window_width;
+        
+        int tiled_idx = 0;
+        for (int i = 0; i <= prev_idx; ++i) {
+            if (!all_windows[i]->is_floating) {
+                if (i == prev_idx) break;
+                tiled_idx++;
+            }
+        }
+        
+        int target_scroll = tiled_idx * window_width;
         
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
@@ -517,74 +598,6 @@ void nwm::focus_prev(void *arg, Base &base) {
         
         tile_horizontal(base);
     }
-}
-
-void nwm::swap_next(void *arg, Base &base) {
-    (void)arg;
-    auto &current_ws = get_current_workspace(base);
-    if (current_ws.windows.size() < 2) return;
-
-    int current_idx = -1;
-    for (size_t i = 0; i < current_ws.windows.size(); ++i) {
-        if (current_ws.focused_window && current_ws.windows[i].window == current_ws.focused_window->window) {
-            current_idx = i;
-            break;
-        }
-    }
-
-    if (current_idx == -1 || current_ws.windows[current_idx].is_floating) return;
-
-    int next_idx = (current_idx + 1) % current_ws.windows.size();
-    std::swap(current_ws.windows[current_idx], current_ws.windows[next_idx]);
-
-    if (base.horizontal_mode) {
-        tile_horizontal(base);
-    } else {
-        tile_windows(base);
-    }
-    focus_window(&current_ws.windows[next_idx], base);
-}
-
-void nwm::swap_prev(void *arg, Base &base) {
-    (void)arg;
-    auto &current_ws = get_current_workspace(base);
-    if (current_ws.windows.size() < 2) return;
-
-    int current_idx = -1;
-    for (size_t i = 0; i < current_ws.windows.size(); ++i) {
-        if (current_ws.focused_window && current_ws.windows[i].window == current_ws.focused_window->window) {
-            current_idx = i;
-            break;
-        }
-    }
-
-    if (current_idx == -1 || current_ws.windows[current_idx].is_floating) return;
-
-    int prev_idx = (current_idx - 1 + current_ws.windows.size()) % current_ws.windows.size();
-    std::swap(current_ws.windows[current_idx], current_ws.windows[prev_idx]);
-
-    if (base.horizontal_mode) {
-        tile_horizontal(base);
-    } else {
-        tile_windows(base);
-    }
-    focus_window(&current_ws.windows[prev_idx], base);
-}
-
-void nwm::resize_master(void *arg, Base &base) {
-    auto &current_ws = get_current_workspace(base);
-    if (current_ws.windows.size() < 2 || base.horizontal_mode) return;
-
-    int delta = (int)(long)arg;
-    int screen_width = WIDTH(base.display, base.screen);
-
-    float delta_factor = (float)delta / screen_width;
-    base.master_factor += delta_factor;
-
-    if (base.master_factor < 0.1f) base.master_factor = 0.1f;
-    if (base.master_factor > 0.9f) base.master_factor = 0.9f;
-
-    tile_windows(base);
 }
 
 void nwm::move_window(ManagedWindow *window, int x, int y, Base &base) {
@@ -601,145 +614,6 @@ void nwm::resize_window(ManagedWindow *window, int width, int height, Base &base
         window->height = height;
         XResizeWindow(base.display, window->window, width, height);
     }
-}
-
-void nwm::tile_horizontal(Base &base) {
-    auto &current_ws = get_current_workspace(base);
-    
-    std::vector<ManagedWindow*> tiled_windows;
-    for (auto &w : current_ws.windows) {
-        if (!w.is_floating) {
-            tiled_windows.push_back(&w);
-        }
-    }
-    
-    if (tiled_windows.empty()) {
-        for (auto &w : current_ws.windows) {
-            if (w.is_floating) {
-                XRaiseWindow(base.display, w.window);
-            }
-        }
-        return;
-    }
-
-    int screen_width = WIDTH(base.display, base.screen);
-    int screen_height = HEIGHT(base.display, base.screen);
-    int bar_height = base.bar_visible ? base.bar.height : 0;
-    int usable_height = screen_height - bar_height;
-
-    if (tiled_windows.size() == 1) {
-        tiled_windows[0]->x = base.gaps;
-        tiled_windows[0]->y = base.gaps + bar_height;
-        tiled_windows[0]->width = screen_width - 2 * base.gaps - 2 * BORDER_WIDTH;
-        tiled_windows[0]->height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
-        
-        XMoveResizeWindow(base.display, tiled_windows[0]->window,
-                         tiled_windows[0]->x, tiled_windows[0]->y,
-                         tiled_windows[0]->width, tiled_windows[0]->height);
-        
-        XRaiseWindow(base.display, tiled_windows[0]->window);
-        XFlush(base.display);
-        return;
-    }
-
-    int window_width = screen_width / 2;
-    
-    for (size_t i = 0; i < tiled_windows.size(); ++i) {
-        int x_pos = i * window_width - current_ws.scroll_offset + base.gaps;
-        int y_pos = base.gaps + bar_height;
-        int win_width = window_width - 2 * base.gaps - 2 * BORDER_WIDTH;
-        int win_height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
-        
-        tiled_windows[i]->x = x_pos;
-        tiled_windows[i]->y = y_pos;
-        tiled_windows[i]->width = win_width;
-        tiled_windows[i]->height = win_height;
-
-        XMoveResizeWindow(base.display, tiled_windows[i]->window,
-                         tiled_windows[i]->x, tiled_windows[i]->y,
-                         tiled_windows[i]->width, tiled_windows[i]->height);
-    }
-    
-    for (auto &w : current_ws.windows) {
-        if (w.is_floating) {
-            XRaiseWindow(base.display, w.window);
-        }
-    }
-    
-    if (base.focused_window) {
-        XRaiseWindow(base.display, base.focused_window->window);
-    }
-    
-    XFlush(base.display);
-}
-
-void nwm::tile_windows(Base &base) {
-    auto &current_ws = get_current_workspace(base);
-    
-    std::vector<ManagedWindow*> tiled_windows;
-    for (auto &w : current_ws.windows) {
-        if (!w.is_floating) {
-            tiled_windows.push_back(&w);
-        }
-    }
-    
-    if (tiled_windows.empty()) {
-        for (auto &w : current_ws.windows) {
-            if (w.is_floating) {
-                XRaiseWindow(base.display, w.window);
-            }
-        }
-        return;
-    }
-
-    int screen_width = WIDTH(base.display, base.screen);
-    int screen_height = HEIGHT(base.display, base.screen);
-    int bar_height = base.bar_visible ? base.bar.height : 0;
-    int usable_height = screen_height - bar_height;
-
-    if (tiled_windows.size() == 1) {
-        tiled_windows[0]->x = base.gaps;
-        tiled_windows[0]->y = base.gaps + bar_height;
-        tiled_windows[0]->width = screen_width - 2 * base.gaps - 2 * BORDER_WIDTH;
-        tiled_windows[0]->height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
-    } else {
-        int master_width = (int)(screen_width * base.master_factor) - base.gaps - base.gaps / 2 - 2 * BORDER_WIDTH;
-        int stack_x = (int)(screen_width * base.master_factor) + base.gaps / 2;
-        int stack_width = screen_width - stack_x - base.gaps - 2 * BORDER_WIDTH;
-        int stack_height = (usable_height - base.gaps * tiled_windows.size()) / (tiled_windows.size() - 1) - 2 * BORDER_WIDTH;
-
-        tiled_windows[0]->x = base.gaps;
-        tiled_windows[0]->y = base.gaps + bar_height;
-        tiled_windows[0]->width = master_width;
-        tiled_windows[0]->height = usable_height - 2 * base.gaps - 2 * BORDER_WIDTH;
-
-        for (size_t i = 1; i < tiled_windows.size(); ++i) {
-            tiled_windows[i]->x = stack_x;
-            tiled_windows[i]->y = base.gaps + bar_height + (i - 1) * (stack_height + base.gaps + 2 * BORDER_WIDTH);
-            tiled_windows[i]->width = stack_width;
-            tiled_windows[i]->height = stack_height;
-        }
-    }
-
-    for (auto *w : tiled_windows) {
-        XMoveResizeWindow(base.display, w->window, w->x, w->y, w->width, w->height);
-    }
-    
-    for (auto *w : tiled_windows) {
-        XRaiseWindow(base.display, w->window);
-    }
-    
-    for (auto &w : current_ws.windows) {
-        if (w.is_floating) {
-            XRaiseWindow(base.display, w.window);
-        }
-    }
-    
-    if (base.focused_window) {
-        XRaiseWindow(base.display, base.focused_window->window);
-    }
-    
-    XFlush(base.display);
 }
 
 void nwm::close_window(void *arg, Base &base) {
@@ -769,9 +643,14 @@ void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
     if (!current_ws.windows.empty()) {
         ManagedWindow *new_window = &current_ws.windows.back();
         
-        if (!new_window->is_floating) {
+        bool had_floating_focus = (base.focused_window && base.focused_window->is_floating);
+        ManagedWindow *prev_focused = base.focused_window;
+        
+        if (!had_floating_focus) {
             focus_window(new_window, base);
-            
+        }
+        
+        if (!new_window->is_floating) {
             if (base.horizontal_mode) {
                 int screen_width = WIDTH(base.display, base.screen);
                 int window_width = screen_width / 2;
@@ -789,19 +668,27 @@ void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
                     current_ws.scroll_offset = target_scroll + window_width - screen_width;
                 }
             }
+            
+            if (base.horizontal_mode) {
+                tile_horizontal(base);
+            } else {
+                tile_windows(base);
+            }
         } else {
             XRaiseWindow(base.display, new_window->window);
         }
-    }
-    
-    if (base.horizontal_mode) {
-        tile_horizontal(base);
-    } else {
-        tile_windows(base);
+        
+        if (had_floating_focus && prev_focused) {
+            XRaiseWindow(base.display, prev_focused->window);
+            XSetInputFocus(base.display, prev_focused->window, RevertToPointerRoot, CurrentTime);
+        }
     }
 }
 
 void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
+    bool had_floating_focus = (base.focused_window && base.focused_window->is_floating);
+    ManagedWindow *prev_focused = (had_floating_focus && base.focused_window->window != e->window) ? base.focused_window : nullptr;
+    
     unmanage_window(e->window, base);
     
     if (base.horizontal_mode) {
@@ -810,18 +697,16 @@ void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
         tile_windows(base);
     }
     
-    auto &current_ws = get_current_workspace(base);
-    if (!current_ws.windows.empty() && !current_ws.focused_window) {
-        for (auto &w : current_ws.windows) {
-            if (!w.is_floating) {
-                focus_window(&w, base);
-                break;
-            }
-        }
+    if (prev_focused) {
+        XRaiseWindow(base.display, prev_focused->window);
+        XSetInputFocus(base.display, prev_focused->window, RevertToPointerRoot, CurrentTime);
     }
 }
 
 void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
+    bool had_floating_focus = (base.focused_window && base.focused_window->is_floating);
+    ManagedWindow *prev_focused = (had_floating_focus && base.focused_window->window != e->window) ? base.focused_window : nullptr;
+    
     unmanage_window(e->window, base);
     
     if (base.horizontal_mode) {
@@ -830,14 +715,9 @@ void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
         tile_windows(base);
     }
     
-    auto &current_ws = get_current_workspace(base);
-    if (!current_ws.windows.empty() && !current_ws.focused_window) {
-        for (auto &w : current_ws.windows) {
-            if (!w.is_floating) {
-                focus_window(&w, base);
-                break;
-            }
-        }
+    if (prev_focused) {
+        XRaiseWindow(base.display, prev_focused->window);
+        XSetInputFocus(base.display, prev_focused->window, RevertToPointerRoot, CurrentTime);
     }
 }
 
@@ -856,6 +736,10 @@ void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
     for (auto &w : current_ws.windows) {
         if (w.window == e->window && w.is_floating) {
             is_floating = true;
+            w.x = e->x;
+            w.y = e->y;
+            w.width = e->width;
+            w.height = e->height;
             break;
         }
     }
@@ -920,11 +804,11 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
         return;
     }
     
+    Window target_window = (e->subwindow != None) ? e->subwindow : e->window;
+    
     if (e->button == Button1 && (e->state & MODKEY)) {
         for (auto &w : current_ws.windows) {
-            if (e->window == w.window || e->subwindow == w.window) {
-                Window target_window = (e->window == w.window) ? e->window : e->subwindow;
-                
+            if (target_window == w.window) {
                 if (base.dragging || base.resizing) {
                     XUngrabPointer(base.display, CurrentTime);
                 }
@@ -942,15 +826,12 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
                 }
                 
                 focus_window(&w, base);
-                XRaiseWindow(base.display, target_window);
                 return;
             }
         }
     } else if (e->button == Button3 && (e->state & MODKEY)) {
         for (auto &w : current_ws.windows) {
-            if (e->window == w.window || e->subwindow == w.window) {
-                Window target_window = (e->window == w.window) ? e->window : e->subwindow;
-                
+            if (target_window == w.window) {
                 if (base.dragging || base.resizing) {
                     XUngrabPointer(base.display, CurrentTime);
                 }
@@ -968,13 +849,12 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
                 }
                 
                 focus_window(&w, base);
-                XRaiseWindow(base.display, target_window);
                 return;
             }
         }
     } else if (e->button == Button1) {
         for (auto &w : current_ws.windows) {
-            if (e->window == w.window || e->subwindow == w.window) {
+            if (target_window == w.window) {
                 focus_window(&w, base);
                 break;
             }
@@ -990,42 +870,62 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
         
         auto &current_ws = get_current_workspace(base);
         
-        if (base.dragging && base.horizontal_mode && current_ws.windows.size() > 1) {
-            int dragged_idx = -1;
+        if (base.dragging) {
             bool is_floating = false;
-            
-            for (size_t i = 0; i < current_ws.windows.size(); ++i) {
-                if (current_ws.windows[i].window == base.drag_window) {
-                    dragged_idx = i;
-                    is_floating = current_ws.windows[i].is_floating;
+            for (auto &w : current_ws.windows) {
+                if (w.window == base.drag_window) {
+                    is_floating = w.is_floating;
+                    if (is_floating) {
+                        XWindowAttributes attr;
+                        if (XGetWindowAttributes(base.display, base.drag_window, &attr)) {
+                            w.x = attr.x;
+                            w.y = attr.y;
+                        }
+                    }
                     break;
                 }
             }
             
-            if (dragged_idx != -1 && !is_floating) {
-                int screen_width = WIDTH(base.display, base.screen);
-                int window_width = screen_width / 2;
+            if (!is_floating && base.horizontal_mode && current_ws.windows.size() > 1) {
+                int dragged_idx = -1;
                 
-                int window_center_x = e->x_root;
+                for (size_t i = 0; i < current_ws.windows.size(); ++i) {
+                    if (current_ws.windows[i].window == base.drag_window) {
+                        dragged_idx = i;
+                        break;
+                    }
+                }
                 
-                int target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
-                
-                if (target_idx < 0) target_idx = 0;
-                if (target_idx >= (int)current_ws.windows.size()) target_idx = current_ws.windows.size() - 1;
-                
-                if (target_idx != dragged_idx) {
-                    ManagedWindow dragged_window = current_ws.windows[dragged_idx];
-                    current_ws.windows.erase(current_ws.windows.begin() + dragged_idx);
-                    current_ws.windows.insert(current_ws.windows.begin() + target_idx, dragged_window);
+                if (dragged_idx != -1) {
+                    int screen_width = WIDTH(base.display, base.screen);
+                    int window_width = screen_width / 2;
+                    
+                    int window_center_x = e->x_root;
+                    
+                    int target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
+                    
+                    if (target_idx < 0) target_idx = 0;
+                    if (target_idx >= (int)current_ws.windows.size()) target_idx = current_ws.windows.size() - 1;
+                    
+                    if (target_idx != dragged_idx) {
+                        ManagedWindow dragged_window = current_ws.windows[dragged_idx];
+                        current_ws.windows.erase(current_ws.windows.begin() + dragged_idx);
+                        current_ws.windows.insert(current_ws.windows.begin() + target_idx, dragged_window);
+                    }
                 }
             }
-            
-            tile_horizontal(base);
         } else if (base.resizing) {
             bool is_floating = false;
             for (auto &w : current_ws.windows) {
                 if (w.window == base.drag_window) {
                     is_floating = w.is_floating;
+                    if (is_floating) {
+                        XWindowAttributes attr;
+                        if (XGetWindowAttributes(base.display, base.drag_window, &attr)) {
+                            w.width = attr.width;
+                            w.height = attr.height;
+                        }
+                    }
                     break;
                 }
             }
@@ -1044,13 +944,12 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
                     }
                 }
             }
-            tile_windows(base);
+        }
+        
+        if (base.horizontal_mode) {
+            tile_horizontal(base);
         } else {
-            if (base.horizontal_mode) {
-                tile_horizontal(base);
-            } else {
-                tile_windows(base);
-            }
+            tile_windows(base);
         }
         
         base.dragging = false;
@@ -1157,6 +1056,12 @@ void nwm::init(Base &base) {
     base.widget = WIDGET;
     base.bar_visible = true;
     
+    base.border_width = BORDER_WIDTH;
+    base.border_color = BORDER_COLOR;
+    base.focus_color = FOCUS_COLOR;
+    base.resize_step = RESIZE_STEP;
+    base.scroll_step = SCROLL_STEP;
+    
     base.cursor = XCreateFontCursor(base.display, XC_left_ptr);
     XDefineCursor(base.display, base.root, base.cursor);
 
@@ -1196,7 +1101,7 @@ void nwm::init(Base &base) {
         for (unsigned int i = 0; i < nchildren; ++i) {
             XWindowAttributes attr;
             if (XGetWindowAttributes(base.display, children[i], &attr)) {
-                if (!attr.override_redirect && attr.map_state == IsViewable) {
+                if (attr.map_state == IsViewable && !should_ignore_window(base.display, children[i])) {
                     nwm::manage_window(children[i], base);
                 }
             }

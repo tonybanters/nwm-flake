@@ -2,27 +2,48 @@
 #define CONFIG_HPP
 
 #include <X11/keysym.h>
-#include "nwm.hpp"
 
+// Forward declarations to avoid circular dependencies
+namespace nwm {
+    struct Base;
+    
+    // Window management
+    void spawn(void *arg, Base &base);
+    void close_window(void *arg, Base &base);
+    void quit_wm(void *arg, Base &base);
+    void toggle_gap(void *arg, Base &base);
+    void toggle_bar(void *arg, Base &base);
+    void toggle_float(void *arg, Base &base);
+    void focus_next(void *arg, Base &base);
+    void focus_prev(void *arg, Base &base);
+    
+    // Tiling functions
+    void toggle_layout(void *arg, Base &base);
+    void swap_prev(void *arg, Base &base);
+    void swap_next(void *arg, Base &base);
+    void resize_master(void *arg, Base &base);
+    void scroll_left(void *arg, Base &base);
+    void scroll_right(void *arg, Base &base);
+    
+    // Workspace functions
+    void switch_workspace(void *arg, Base &base);
+    void move_to_workspace(void *arg, Base &base);
+}
 
 using namespace nwm;
 
 /* appearance */
-#define BORDER_WIDTH        3
+#define BORDER_WIDTH        4
 #define BORDER_COLOR        0x181818
 #define FOCUS_COLOR         0xFF5577
 #define GAP_SIZE            6
 
 /* font */
 #define FONT                "IosevkaNerdFont:size=12"
-// static const std::vector<std::string> WIDGET = {
-//     " "," "," "," "," "," "," ","󰕧 ","󰙯 " 
-// };
 
 static const std::vector<std::string> WIDGET = {
     "1","2","3","4","5","6","7","8","9" 
 };
-
 
 /* resize step size (in pixels) */
 #define RESIZE_STEP         20
@@ -42,7 +63,6 @@ static const char *browser[]    = { "chromium",   NULL };
 static const char *mastecmd[]   = { "/home/xsoder/scripts/master", NULL };
 static const char *screenshot[]   = { "/home/xsoder/scripts/screenshot", NULL };
 static const char *screenshot_select[]   = { "/home/xsoder/scripts/screenshot-select", NULL };
-
 
 /* workspace arguments */
 static const int ws0 = 0;
@@ -75,6 +95,7 @@ static struct {
     { MODKEY,             XK_q,               close_window,   NULL },
     { MODKEY,             XK_a,               toggle_gap,     NULL },
     { MODKEY,             XK_t,               toggle_layout,  NULL },
+    { MODKEY,             XK_f,               toggle_float,   NULL },
     
     /* Focus and movement */
     { MODKEY,             XK_j,               focus_next,     NULL },

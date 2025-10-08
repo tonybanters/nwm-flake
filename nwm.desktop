@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=NWM
+Comment=A scrollable tiling window manager
+Exec=nwm
+Type=Application
+DesktopNames=NWM
