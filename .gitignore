@@ -1,5 +1,6 @@
+**/*.o
 nwm
 thirdparty
-todo.md
+Todo.md
 build
 install.sh
