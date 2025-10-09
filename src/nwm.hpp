@@ -79,8 +79,17 @@ void focus_next(void *arg, Base &base);
 void focus_prev(void *arg, Base &base);
 void quit_wm(void *arg, Base &base);
 void toggle_gap(void *arg, Base &base);
+void toggle_toggle(void *arg, Base &base);
 void toggle_bar(void *arg, Base &base);
 void toggle_float(void *arg, Base &base);
+
+void toggle_layout(void *arg, Base &base);
+void swap_prev(void *arg, Base &base);
+void swap_next(void *arg, Base &base);
+void resize_master(void *arg, Base &base);
+void scroll_left(void *arg, Base &base);
+void scroll_right(void *arg, Base &base);
+
 
 void switch_workspace(void *arg, Base &base);
 void move_to_workspace(void *arg, Base &base);
