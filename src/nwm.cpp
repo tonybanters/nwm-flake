@@ -485,14 +485,18 @@ void nwm::setup_keys(nwm::Base &base) {
                 ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
                 GrabModeAsync, GrabModeAsync, None, None);
 
-    XGrabButton(base.display, Button4, MODKEY, base.root, False,
-                ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
+    unsigned int modifiers[] = {0, LockMask, Mod2Mask, Mod2Mask | LockMask};
+    for (unsigned int mod : modifiers) {
+        XGrabButton(base.display, Button4, MODKEY | mod, base.root, False,
+                    ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
 
-    XGrabButton(base.display, Button5, MODKEY, base.root, False,
-                ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
+        XGrabButton(base.display, Button5, MODKEY | mod, base.root, False,
+                    ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
+    }
 
     XSync(base.display, False);
 }
+
 
 void nwm::spawn(void *arg, nwm::Base &base) {
     const char **cmd = (const char **)arg;
@@ -1045,6 +1049,17 @@ void nwm::reload_config(void *arg, nwm::Base &base) {
 }
 
 void nwm::handle_button_press(XButtonEvent *e, Base &base) {
+    if ((e->state & MODKEY) && (e->button == Button4 || e->button == Button5)) {
+        if (base.horizontal_mode) {
+            if (e->button == Button4) {
+                scroll_left(nullptr, base);
+            } else {
+                scroll_right(nullptr, base);
+            }
+            return;
+        }
+    }
+    
     if (e->window == base.systray.window) {
         return;
     }
@@ -1062,19 +1077,9 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
 
     auto &current_ws = get_current_workspace(base);
     
-    if (e->button == Button4 && (e->state & MODKEY)) {
-        if (base.horizontal_mode) {
-            scroll_left(nullptr, base);
-        }
-        return;
-    }
-    
-    if (e->button == Button5 && (e->state & MODKEY)) {
-        if (base.horizontal_mode) {
-            scroll_right(nullptr, base);
-        }
-        return;
-    }
+    // REMOVE THESE DUPLICATE CHECKS - they're already handled at the top!
+    // if (e->button == Button4 && (e->state & MODKEY)) { ... }
+    // if (e->button == Button5 && (e->state & MODKEY)) { ... }
     
     Window target_window = (e->subwindow != None) ? e->subwindow : e->window;
     
