@@ -9,6 +9,7 @@ LDLIBS   = -lX11 -lXft -lfreetype -lfontconfig -lXrender -lm
 
 PREFIX   ?= /usr/local
 BINDIR   ?= $(PREFIX)/bin
+XSESSIONSDIR ?= /usr/share/xsessions
 
 .PHONY: all install clean uninstall
 
@@ -22,8 +23,11 @@ nwm: $(OBJ)
 
 install: nwm
 	mkdir -p $(BINDIR)
+	mkdir -p $(XSESSIONSDIR)
 	install -Dm755 nwm $(BINDIR)/nwm
+	install -Dm644 nwm.desktop $(XSESSIONSDIR)/nwm.desktop
 	@echo "Installed nwm to $(BINDIR)"
+	@echo "Installed nwm.desktop to $(XSESSIONSDIR)"
 
 clean:
 	$(RM) nwm $(OBJ)
