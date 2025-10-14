@@ -1378,6 +1378,58 @@ void nwm::handle_expose(XExposeEvent *e, Base &base) {
     }
 }
 
+void nwm::setup_ewmh(Base &base) {
+    Atom net_supporting_wm_check = XInternAtom(base.display, "_NET_SUPPORTING_WM_CHECK", False);
+    Atom net_wm_name = XInternAtom(base.display, "_NET_WM_NAME", False);
+    Atom utf8_string = XInternAtom(base.display, "UTF8_STRING", False);
+    Atom net_supported = XInternAtom(base.display, "_NET_SUPPORTED", False);
+    
+    Window check_win = XCreateSimpleWindow(base.display, base.root, 0, 0, 1, 1, 0, 0, 0);
+    
+    XChangeProperty(base.display, check_win, net_supporting_wm_check, XA_WINDOW, 32,
+                   PropModeReplace, (unsigned char *)&check_win, 1);
+    
+    XChangeProperty(base.display, base.root, net_supporting_wm_check, XA_WINDOW, 32,
+                   PropModeReplace, (unsigned char *)&check_win, 1);
+    
+    const char *wm_name = "NWM";
+    XChangeProperty(base.display, check_win, net_wm_name, utf8_string, 8,
+                   PropModeReplace, (unsigned char *)wm_name, strlen(wm_name));
+    
+    Atom supported[] = {
+        net_supporting_wm_check,
+        net_wm_name,
+        XInternAtom(base.display, "_NET_WM_STATE", False),
+        XInternAtom(base.display, "_NET_WM_STATE_FULLSCREEN", False),
+        XInternAtom(base.display, "_NET_WM_STATE_MODAL", False),
+        XInternAtom(base.display, "_NET_WM_WINDOW_TYPE", False),
+        XInternAtom(base.display, "_NET_WM_WINDOW_TYPE_DIALOG", False),
+        XInternAtom(base.display, "_NET_WM_WINDOW_TYPE_UTILITY", False),
+        XInternAtom(base.display, "_NET_WM_WINDOW_TYPE_SPLASH", False),
+        XInternAtom(base.display, "_NET_ACTIVE_WINDOW", False),
+        XInternAtom(base.display, "_NET_CLIENT_LIST", False),
+        XInternAtom(base.display, "_NET_NUMBER_OF_DESKTOPS", False),
+        XInternAtom(base.display, "_NET_CURRENT_DESKTOP", False),
+    };
+    
+    XChangeProperty(base.display, base.root, net_supported, XA_ATOM, 32,
+                   PropModeReplace, (unsigned char *)supported, sizeof(supported) / sizeof(Atom));
+    
+    long num_desktops = NUM_WORKSPACES;
+    Atom net_number_of_desktops = XInternAtom(base.display, "_NET_NUMBER_OF_DESKTOPS", False);
+    XChangeProperty(base.display, base.root, net_number_of_desktops, XA_CARDINAL, 32,
+                   PropModeReplace, (unsigned char *)&num_desktops, 1);
+    
+    long current_desktop = 0;
+    Atom net_current_desktop = XInternAtom(base.display, "_NET_CURRENT_DESKTOP", False);
+    XChangeProperty(base.display, base.root, net_current_desktop, XA_CARDINAL, 32,
+                   PropModeReplace, (unsigned char *)&current_desktop, 1);
+    
+    XSync(base.display, False);
+    
+    base.hint_check_window = check_win;
+}
+
 void nwm::init(Base &base) {
     struct sigaction sa;
     sa.sa_handler = [](int) {
@@ -1441,6 +1493,7 @@ void nwm::init(Base &base) {
 
     workspace_init(base);
     bar_init(base);
+    setup_ewmh(base);
     systray_init(base);
 
     XSelectInput(base.display, base.root,
@@ -1469,6 +1522,11 @@ void nwm::init(Base &base) {
 }
 
 void nwm::cleanup(Base &base) {
+    if (base.hint_check_window) {
+        XDestroyWindow(base.display, base.hint_check_window);
+        base.hint_check_window = 0;
+    }
+
     if (base.dragging || base.resizing) {
         XUngrabPointer(base.display, CurrentTime);
         base.dragging = false;

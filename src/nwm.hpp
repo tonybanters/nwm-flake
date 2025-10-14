@@ -77,6 +77,8 @@ struct Base {
     unsigned long focus_color;
     int resize_step;
     int scroll_step;
+
+    Window hint_check_window;
 };
 
 void manage_window(Window window, Base &base);
@@ -119,6 +121,7 @@ void handle_destroy_notify(XDestroyWindowEvent *e, Base &base);
 void handle_expose(XExposeEvent *e, Base &base);
 void handle_client_message(XClientMessageEvent *e, Base &base);
 
+void setup_ewmh(Base &base);
 void reload_config(void *arg, Base &base);
 void spawn(void *arg, Base &base);
 void setup_keys(Base &base);
