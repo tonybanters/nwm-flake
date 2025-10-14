@@ -6,6 +6,7 @@
 #include <X11/Xft/Xft.h>
 #include <vector>
 #include "bar.hpp"
+#include "systray.hpp"
 
 #define WIDTH(display, screen_number) XDisplayWidth((display), (screen_number))
 #define HEIGHT(display, screen_number) XDisplayHeight((display), (screen_number))
@@ -57,6 +58,7 @@ struct Base {
     XftDraw* xft_draw;
 
     StatusBar bar;
+    SystemTray systray;
     std::vector<Workspace> workspaces;
     size_t current_workspace;
     bool overview_mode;
@@ -114,6 +116,7 @@ void handle_unmap_notify(XUnmapEvent *e, Base &base);
 void handle_enter_notify(XCrossingEvent *e, Base &base);
 void handle_destroy_notify(XDestroyWindowEvent *e, Base &base);
 void handle_expose(XExposeEvent *e, Base &base);
+void handle_client_message(XClientMessageEvent *e, Base &base);
 
 void reload_config(void *arg, Base &base);
 void spawn(void *arg, Base &base);

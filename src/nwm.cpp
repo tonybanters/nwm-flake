@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "bar.hpp"
 #include "tiling.hpp"
+#include "systray.hpp"
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -353,8 +354,6 @@ void nwm::toggle_fullscreen(void *arg, Base &base) {
     
     XFlush(base.display);
 }
-
-// Continuation of nwm.cpp...
 
 void nwm::switch_workspace(void *arg, Base &base) {
     if (!arg) return;
@@ -921,6 +920,13 @@ void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
 }
 
 void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
+    for (const auto &icon : base.systray.icons) {
+        if (icon.window == e->window) {
+            systray_handle_destroy(base, e->window);
+            return;
+        }
+    }
+    
     bool had_floating_focus = (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen));
     ManagedWindow *prev_focused = (had_floating_focus && base.focused_window->window != e->window) ? base.focused_window : nullptr;
     
@@ -939,6 +945,13 @@ void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
 }
 
 void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
+    for (const auto &icon : base.systray.icons) {
+        if (icon.window == e->window) {
+            systray_handle_configure_request(base, e);
+            return;
+        }
+    }
+    
     XWindowChanges wc;
     wc.x = e->x;
     wc.y = e->y;
@@ -968,6 +981,10 @@ void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
     } else {
         XConfigureWindow(base.display, e->window, e->value_mask & (CWSibling | CWStackMode), &wc);
     }
+}
+
+void nwm::handle_client_message(XClientMessageEvent *e, Base &base) {
+    systray_handle_client_message(base, e);
 }
 
 void nwm::handle_key_press(XKeyEvent *e, Base &base) {
@@ -1003,7 +1020,18 @@ void nwm::reload_config(void *arg, nwm::Base &base) {
 }
 
 void nwm::handle_button_press(XButtonEvent *e, Base &base) {
+    if (e->window == base.systray.window) {
+        return;
+    }
+    
     if (e->window == base.bar.window) {
+        if (e->button == Button1) {
+            bar_handle_click(base, e->x, e->y, e->button);
+        } else if (e->button == Button4) {
+            bar_handle_scroll(base, -1);
+        } else if (e->button == Button5) {
+            bar_handle_scroll(base, 1);
+        }
         return;
     }
 
@@ -1225,6 +1253,15 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
 }
 
 void nwm::handle_motion_notify(XMotionEvent *e, Base &base) {
+    if (e->window == base.systray.window) {
+        return;
+    }
+    
+    if (e->window == base.bar.window) {
+        bar_handle_motion(base, e->x, e->y);
+        return;
+    }
+    
     if (!base.dragging && !base.resizing) return;
     if (base.drag_window == None) return;
     
@@ -1379,6 +1416,7 @@ void nwm::init(Base &base) {
 
     workspace_init(base);
     bar_init(base);
+    systray_init(base);
 
     XSelectInput(base.display, base.root,
                  SubstructureRedirectMask | SubstructureNotifyMask |
@@ -1419,6 +1457,7 @@ void nwm::cleanup(Base &base) {
         }
     }
 
+    systray_cleanup(base);
     bar_cleanup(base);
 
     if (base.xft_font) {
@@ -1459,6 +1498,10 @@ void nwm::run(Base &base) {
                  SubstructureRedirectMask | SubstructureNotifyMask |
                  ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
                  EnterWindowMask | KeyPressMask | PropertyChangeMask);
+    
+    XSelectInput(base.display, base.bar.window,
+                 ExposureMask | ButtonPressMask | ButtonReleaseMask |
+                 PointerMotionMask | Button4Mask | Button5Mask);
 
     XSetErrorHandler(x_error_handler);
 
@@ -1500,13 +1543,17 @@ void nwm::run(Base &base) {
                 case Expose:
                     handle_expose(&e.xexpose, base);
                     break;
+                case ClientMessage:
+                    handle_client_message(&e.xclient, base);
+                    break;
                 default:
                     break;
             }
         }
 
         time_t now = time(nullptr);
-        if (now - last_bar_update >= 60) {
+        if (now - last_bar_update >= 2) {
+            base.bar.systray_width = systray_get_width(base);
             bar_update_time(base);
             last_bar_update = now;
         }
