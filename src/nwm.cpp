@@ -186,6 +186,31 @@ bool should_ignore_window(Display *display, Window window) {
     return false;
 }
 
+void nwm::raise_override_redirect_windows(Display *display) {
+    
+    Window root = DefaultRootWindow(display);
+    Window root_return, parent_return;
+    Window *children;
+    unsigned int nchildren;
+    
+    if (!XQueryTree(display, root, &root_return, &parent_return, &children, &nchildren)) {
+        return;
+    }
+    
+    for (unsigned int i = 0; i < nchildren; ++i) {
+        XWindowAttributes attr;
+        if (XGetWindowAttributes(display, children[i], &attr)) {
+            if (attr.override_redirect && attr.map_state == IsViewable) {
+                XRaiseWindow(display, children[i]);
+            }
+        }
+    }
+    
+    if (children) {
+        XFree(children);
+    }
+}
+
 void nwm::handle_special_window_map(Display *display, Window window) {
     XWindowAttributes attr;
     if (!XGetWindowAttributes(display, window, &attr)) {

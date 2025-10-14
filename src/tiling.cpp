@@ -3,6 +3,45 @@
 #include <algorithm>
 #include <X11/Xlib.h>
 
+static void atomic_restack(Display *display, nwm::Base &base, std::vector<Window> &stack_order) {
+    (void)base;
+    if (stack_order.empty()) return;
+    XRestackWindows(display, stack_order.data(), stack_order.size());
+}
+
+static void raise_override_windows(Display *display, nwm::Base &base) {
+    Window root = DefaultRootWindow(display);
+    Window root_return, parent_return;
+    Window *children;
+    unsigned int nchildren;
+    
+    if (!XQueryTree(display, root, &root_return, &parent_return, &children, &nchildren)) {
+        return;
+    }
+    
+    int screen_width = WIDTH(display, base.screen);
+    int screen_height = HEIGHT(display, base.screen);
+    
+    for (unsigned int i = 0; i < nchildren; ++i) {
+        XWindowAttributes attr;
+        if (XGetWindowAttributes(display, children[i], &attr)) {
+            if (attr.override_redirect && attr.map_state == IsViewable) {
+                if (children[i] != base.bar.window && children[i] != base.systray.window) {
+                    bool is_large = (attr.width > screen_width / 4 && attr.height > screen_height / 4);
+                    
+                    if (is_large) {
+                        XRaiseWindow(display, children[i]);
+                    }
+                }
+            }
+        }
+    }
+    
+    if (children) {
+        XFree(children);
+    }
+}
+
 void nwm::tile_horizontal(Base &base) {
     auto &current_ws = get_current_workspace(base);
     
@@ -14,16 +53,22 @@ void nwm::tile_horizontal(Base &base) {
     }
     
     if (tiled_windows.empty()) {
+        std::vector<Window> stack_order;
         for (auto &w : current_ws.windows) {
             if (w.is_floating || w.is_fullscreen) {
-                XRaiseWindow(base.display, w.window);
+                stack_order.push_back(w.window);
             }
         }
         if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
-            XRaiseWindow(base.display, base.focused_window->window);
+            auto it = std::find(stack_order.begin(), stack_order.end(), base.focused_window->window);
+            if (it != stack_order.end()) {
+                stack_order.erase(it);
+                stack_order.push_back(base.focused_window->window);
+            }
             XSetInputFocus(base.display, base.focused_window->window, RevertToPointerRoot, CurrentTime);
         }
-        raise_special_windows(base.display);
+        atomic_restack(base.display, base, stack_order);
+        raise_override_windows(base.display, base);
         XFlush(base.display);
         return;
     }
@@ -33,6 +78,8 @@ void nwm::tile_horizontal(Base &base) {
     int bar_height = base.bar_visible ? base.bar.height : 0;
     int usable_height = screen_height - bar_height;
     int y_start = (base.bar_position == 0) ? bar_height : 0;
+
+    std::vector<Window> stack_order;
 
     if (tiled_windows.size() == 1) {
         tiled_windows[0]->x = base.gaps;
@@ -44,7 +91,7 @@ void nwm::tile_horizontal(Base &base) {
                          tiled_windows[0]->x, tiled_windows[0]->y,
                          tiled_windows[0]->width, tiled_windows[0]->height);
         
-        XRaiseWindow(base.display, tiled_windows[0]->window);
+        stack_order.push_back(tiled_windows[0]->window);
     } else {
         int window_width = screen_width / 2;
         
@@ -62,24 +109,33 @@ void nwm::tile_horizontal(Base &base) {
             XMoveResizeWindow(base.display, tiled_windows[i]->window,
                              tiled_windows[i]->x, tiled_windows[i]->y,
                              tiled_windows[i]->width, tiled_windows[i]->height);
+            
+            stack_order.push_back(tiled_windows[i]->window);
         }
-        
-        for (auto *w : tiled_windows) {
-            XRaiseWindow(base.display, w->window);
+    }
+    
+    for (auto &w : current_ws.windows) {
+        if (w.is_floating || w.is_fullscreen) {
+            stack_order.push_back(w.window);
         }
     }
     
     if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
-        for (auto &w : current_ws.windows) {
-            if (w.is_floating || w.is_fullscreen) {
-                XRaiseWindow(base.display, w.window);
-            }
+        auto it = std::find(stack_order.begin(), stack_order.end(), base.focused_window->window);
+        if (it != stack_order.end()) {
+            stack_order.erase(it);
+            stack_order.push_back(base.focused_window->window);
         }
-        XRaiseWindow(base.display, base.focused_window->window);
+    }
+    
+    atomic_restack(base.display, base, stack_order);
+    
+    if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
         XSetInputFocus(base.display, base.focused_window->window, RevertToPointerRoot, CurrentTime);
     }
     
-    raise_special_windows(base.display);
+    raise_override_windows(base.display, base);
+    
     XFlush(base.display);
 }
 
@@ -94,15 +150,21 @@ void nwm::tile_windows(Base &base) {
     }
     
     if (tiled_windows.empty()) {
+        std::vector<Window> stack_order;
         for (auto &w : current_ws.windows) {
             if (w.is_floating || w.is_fullscreen) {
-                XRaiseWindow(base.display, w.window);
+                stack_order.push_back(w.window);
             }
         }
         if (base.focused_window) {
-            XRaiseWindow(base.display, base.focused_window->window);
+            auto it = std::find(stack_order.begin(), stack_order.end(), base.focused_window->window);
+            if (it != stack_order.end()) {
+                stack_order.erase(it);
+                stack_order.push_back(base.focused_window->window);
+            }
         }
-        raise_special_windows(base.display);
+        atomic_restack(base.display, base, stack_order);
+        raise_override_windows(base.display, base);
         XFlush(base.display);
         return;
     }
@@ -112,6 +174,8 @@ void nwm::tile_windows(Base &base) {
     int bar_height = base.bar_visible ? base.bar.height : 0;
     int usable_height = screen_height - bar_height;
     int y_start = (base.bar_position == 0) ? bar_height : 0;
+
+    std::vector<Window> stack_order;
 
     if (tiled_windows.size() == 1) {
         tiled_windows[0]->x = base.gaps;
@@ -123,7 +187,7 @@ void nwm::tile_windows(Base &base) {
                          tiled_windows[0]->x, tiled_windows[0]->y,
                          tiled_windows[0]->width, tiled_windows[0]->height);
         
-        XRaiseWindow(base.display, tiled_windows[0]->window);
+        stack_order.push_back(tiled_windows[0]->window);
     } else {
         int master_width = (int)(screen_width * base.master_factor) - base.gaps - base.gaps / 2 - 2 * base.border_width;
         int stack_x = (int)(screen_width * base.master_factor) + base.gaps / 2;
@@ -144,20 +208,20 @@ void nwm::tile_windows(Base &base) {
 
         for (auto *w : tiled_windows) {
             XMoveResizeWindow(base.display, w->window, w->x, w->y, w->width, w->height);
-        }
-        
-        for (auto *w : tiled_windows) {
-            XRaiseWindow(base.display, w->window);
+            stack_order.push_back(w->window);
         }
     }
     
     for (auto &w : current_ws.windows) {
         if (w.is_floating || w.is_fullscreen) {
-            XRaiseWindow(base.display, w.window);
+            stack_order.push_back(w.window);
         }
     }
     
-    raise_special_windows(base.display);
+    atomic_restack(base.display, base, stack_order);
+    
+    raise_override_windows(base.display, base);
+    
     XFlush(base.display);
 }
 
@@ -215,18 +279,7 @@ void nwm::toggle_layout(void *arg, Base &base) {
         tile_windows(base);
     }
     
-    for (auto &w : current_ws.windows) {
-        if (w.is_floating || w.is_fullscreen) {
-            XRaiseWindow(base.display, w.window);
-        }
-    }
-    
-    if (base.focused_window) {
-        XRaiseWindow(base.display, base.focused_window->window);
-    }
-    
     bar_draw(base);
-    XFlush(base.display);
 }
 
 void nwm::swap_next(void *arg, Base &base) {
