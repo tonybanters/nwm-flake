@@ -18,6 +18,8 @@ void toggle_layout(void *arg, Base &base);
 void swap_next(void *arg, Base &base);
 void swap_prev(void *arg, Base &base);
 
+void raise_special_windows(Display *display);
+
 }
 
 #endif // TILING_HPP

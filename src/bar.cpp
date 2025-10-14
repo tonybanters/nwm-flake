@@ -26,7 +26,13 @@ void nwm::bar_init(Base &base) {
     base.bar.height = BAR_HEIGHT;
     base.bar.width = WIDTH(base.display, base.screen);
     base.bar.x = 0;
-    base.bar.y = 0;
+    
+    // Set bar Y position based on bar_position (0=top, 1=bottom)
+    if (base.bar_position == 1) {
+        base.bar.y = HEIGHT(base.display, base.screen) - BAR_HEIGHT;
+    } else {
+        base.bar.y = 0;
+    }
 
     XSetWindowAttributes attrs;
     attrs.background_pixel = BAR_BG_COLOR;

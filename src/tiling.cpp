@@ -8,21 +8,22 @@ void nwm::tile_horizontal(Base &base) {
     
     std::vector<ManagedWindow*> tiled_windows;
     for (auto &w : current_ws.windows) {
-        if (!w.is_floating) {
+        if (!w.is_floating && !w.is_fullscreen) {
             tiled_windows.push_back(&w);
         }
     }
     
     if (tiled_windows.empty()) {
         for (auto &w : current_ws.windows) {
-            if (w.is_floating) {
+            if (w.is_floating || w.is_fullscreen) {
                 XRaiseWindow(base.display, w.window);
             }
         }
-        if (base.focused_window && base.focused_window->is_floating) {
+        if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
             XRaiseWindow(base.display, base.focused_window->window);
             XSetInputFocus(base.display, base.focused_window->window, RevertToPointerRoot, CurrentTime);
         }
+        raise_special_windows(base.display);
         XFlush(base.display);
         return;
     }
@@ -31,10 +32,11 @@ void nwm::tile_horizontal(Base &base) {
     int screen_height = HEIGHT(base.display, base.screen);
     int bar_height = base.bar_visible ? base.bar.height : 0;
     int usable_height = screen_height - bar_height;
+    int y_start = (base.bar_position == 0) ? bar_height : 0;
 
     if (tiled_windows.size() == 1) {
         tiled_windows[0]->x = base.gaps;
-        tiled_windows[0]->y = base.gaps + bar_height;
+        tiled_windows[0]->y = base.gaps + y_start;
         tiled_windows[0]->width = screen_width - 2 * base.gaps - 2 * base.border_width;
         tiled_windows[0]->height = usable_height - 2 * base.gaps - 2 * base.border_width;
         
@@ -48,7 +50,7 @@ void nwm::tile_horizontal(Base &base) {
         
         for (size_t i = 0; i < tiled_windows.size(); ++i) {
             int x_pos = i * window_width - current_ws.scroll_offset + base.gaps;
-            int y_pos = base.gaps + bar_height;
+            int y_pos = base.gaps + y_start;
             int win_width = window_width - 2 * base.gaps - 2 * base.border_width;
             int win_height = usable_height - 2 * base.gaps - 2 * base.border_width;
             
@@ -67,9 +69,9 @@ void nwm::tile_horizontal(Base &base) {
         }
     }
     
-    if (base.focused_window && base.focused_window->is_floating) {
+    if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
         for (auto &w : current_ws.windows) {
-            if (w.is_floating) {
+            if (w.is_floating || w.is_fullscreen) {
                 XRaiseWindow(base.display, w.window);
             }
         }
@@ -77,6 +79,7 @@ void nwm::tile_horizontal(Base &base) {
         XSetInputFocus(base.display, base.focused_window->window, RevertToPointerRoot, CurrentTime);
     }
     
+    raise_special_windows(base.display);
     XFlush(base.display);
 }
 
@@ -85,20 +88,21 @@ void nwm::tile_windows(Base &base) {
     
     std::vector<ManagedWindow*> tiled_windows;
     for (auto &w : current_ws.windows) {
-        if (!w.is_floating) {
+        if (!w.is_floating && !w.is_fullscreen) {
             tiled_windows.push_back(&w);
         }
     }
     
     if (tiled_windows.empty()) {
         for (auto &w : current_ws.windows) {
-            if (w.is_floating) {
+            if (w.is_floating || w.is_fullscreen) {
                 XRaiseWindow(base.display, w.window);
             }
         }
         if (base.focused_window) {
             XRaiseWindow(base.display, base.focused_window->window);
         }
+        raise_special_windows(base.display);
         XFlush(base.display);
         return;
     }
@@ -107,10 +111,11 @@ void nwm::tile_windows(Base &base) {
     int screen_height = HEIGHT(base.display, base.screen);
     int bar_height = base.bar_visible ? base.bar.height : 0;
     int usable_height = screen_height - bar_height;
+    int y_start = (base.bar_position == 0) ? bar_height : 0;
 
     if (tiled_windows.size() == 1) {
         tiled_windows[0]->x = base.gaps;
-        tiled_windows[0]->y = base.gaps + bar_height;
+        tiled_windows[0]->y = base.gaps + y_start;
         tiled_windows[0]->width = screen_width - 2 * base.gaps - 2 * base.border_width;
         tiled_windows[0]->height = usable_height - 2 * base.gaps - 2 * base.border_width;
         
@@ -126,13 +131,13 @@ void nwm::tile_windows(Base &base) {
         int stack_height = (usable_height - base.gaps * tiled_windows.size()) / (tiled_windows.size() - 1) - 2 * base.border_width;
 
         tiled_windows[0]->x = base.gaps;
-        tiled_windows[0]->y = base.gaps + bar_height;
+        tiled_windows[0]->y = base.gaps + y_start;
         tiled_windows[0]->width = master_width;
         tiled_windows[0]->height = usable_height - 2 * base.gaps - 2 * base.border_width;
 
         for (size_t i = 1; i < tiled_windows.size(); ++i) {
             tiled_windows[i]->x = stack_x;
-            tiled_windows[i]->y = base.gaps + bar_height + (i - 1) * (stack_height + base.gaps + 2 * base.border_width);
+            tiled_windows[i]->y = base.gaps + y_start + (i - 1) * (stack_height + base.gaps + 2 * base.border_width);
             tiled_windows[i]->width = stack_width;
             tiled_windows[i]->height = stack_height;
         }
@@ -147,11 +152,12 @@ void nwm::tile_windows(Base &base) {
     }
     
     for (auto &w : current_ws.windows) {
-        if (w.is_floating) {
+        if (w.is_floating || w.is_fullscreen) {
             XRaiseWindow(base.display, w.window);
         }
     }
     
+    raise_special_windows(base.display);
     XFlush(base.display);
 }
 
@@ -210,7 +216,7 @@ void nwm::toggle_layout(void *arg, Base &base) {
     }
     
     for (auto &w : current_ws.windows) {
-        if (w.is_floating) {
+        if (w.is_floating || w.is_fullscreen) {
             XRaiseWindow(base.display, w.window);
         }
     }
@@ -219,9 +225,7 @@ void nwm::toggle_layout(void *arg, Base &base) {
         XRaiseWindow(base.display, base.focused_window->window);
     }
     
-    // Update the bar to reflect the layout change
     bar_draw(base);
-    
     XFlush(base.display);
 }
 

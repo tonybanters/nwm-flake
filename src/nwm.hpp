@@ -19,7 +19,12 @@ struct ManagedWindow {
     int width, height;
     bool is_floating;
     bool is_focused;
+    bool is_fullscreen;
     int workspace;
+
+    int pre_fs_x, pre_fs_y;
+    int pre_fs_width, pre_fs_height;
+    bool pre_fs_floating;
 };
 
 struct Workspace {
@@ -38,9 +43,12 @@ struct Base {
     ManagedWindow* focused_window;
     bool running;
     Cursor cursor;
+    Cursor cursor_move;
+    Cursor cursor_resize;
     float master_factor;
     bool horizontal_mode;
     bool bar_visible;
+    int bar_position;
     bool resizing;
     int resize_start_width;
     int resize_start_height;
@@ -82,6 +90,7 @@ void toggle_gap(void *arg, Base &base);
 void toggle_toggle(void *arg, Base &base);
 void toggle_bar(void *arg, Base &base);
 void toggle_float(void *arg, Base &base);
+void toggle_fullscreen(void *arg, Base &base);
 
 void toggle_layout(void *arg, Base &base);
 void swap_prev(void *arg, Base &base);
@@ -89,7 +98,6 @@ void swap_next(void *arg, Base &base);
 void resize_master(void *arg, Base &base);
 void scroll_left(void *arg, Base &base);
 void scroll_right(void *arg, Base &base);
-
 
 void switch_workspace(void *arg, Base &base);
 void move_to_workspace(void *arg, Base &base);
@@ -113,6 +121,9 @@ void setup_keys(Base &base);
 void run(Base &base);
 void init(Base &base);
 void cleanup(Base &base);
+
+void handle_special_window_map(Display *display, Window window);
+void raise_special_windows(Display *display);
 
 }
 

@@ -12,18 +12,21 @@ using namespace nwm;
 #define FOCUS_COLOR         0xFF5577
 #define GAP_SIZE            6
 
+/* bar position: 0 = top, 1 = bottom */
+#define BAR_POSITION        1
+
 /* font */
-#define FONT                "IosevkaNerdFont:size=12"
+#define FONT                "DejaVu Sans Mono:size=12"
 
 static const std::vector<std::string> WIDGET = {
     "1","2","3","4","5","6","7","8","9" 
 };
 
 /* resize step size (in pixels) */
-#define RESIZE_STEP         20
+#define RESIZE_STEP         40
 
 /* horizontal scroll step (in pixels) */
-#define SCROLL_STEP         400
+#define SCROLL_STEP         500
 
 /* key definitions */
 #define MODKEY Mod4Mask  // Win key
@@ -69,6 +72,7 @@ static struct {
     { MODKEY,             XK_q,               close_window,   NULL },
     { MODKEY,             XK_a,               toggle_gap,     NULL },
     { MODKEY,             XK_t,               toggle_layout,  NULL },
+    { MODKEY,             XK_f,               toggle_fullscreen, NULL },
     { MODKEY|ShiftMask,   XK_space,           toggle_float,   NULL },
     
     /* Focus and movement */
