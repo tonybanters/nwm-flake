@@ -731,17 +731,15 @@ void nwm::focus_window(ManagedWindow *window, Base &base) {
             XSetWindowBorder(base.display, window->window, base.focus_color);
         }
         
-        XSetInputFocus(base.display, window->window, RevertToPointerRoot, CurrentTime);
-        
-        for (auto &w : current_ws.windows) {
-            if (w.is_floating || w.is_fullscreen) {
-                XRaiseWindow(base.display, w.window);
-            }
+        if (window->is_floating || window->is_fullscreen) {
+            XRaiseWindow(base.display, window->window);
         }
         
+        XSetInputFocus(base.display, window->window, RevertToPointerRoot, CurrentTime);
         XFlush(base.display);
     } else {
         XSetInputFocus(base.display, base.root, RevertToPointerRoot, CurrentTime);
+        XFlush(base.display);
     }
 }
 
@@ -889,7 +887,6 @@ void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
         ManagedWindow *new_window = &current_ws.windows.back();
         
         bool had_floating_focus = (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen));
-        ManagedWindow *prev_focused = base.focused_window;
         
         if (!had_floating_focus) {
             focus_window(new_window, base);
@@ -922,18 +919,10 @@ void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
         } else {
             XRaiseWindow(base.display, new_window->window);
         }
-        
-        if (had_floating_focus && prev_focused) {
-            XRaiseWindow(base.display, prev_focused->window);
-            XSetInputFocus(base.display, prev_focused->window, RevertToPointerRoot, CurrentTime);
-        }
     }
 }
 
 void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
-    bool had_floating_focus = (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen));
-    ManagedWindow *prev_focused = (had_floating_focus && base.focused_window->window != e->window) ? base.focused_window : nullptr;
-    
     unmanage_window(e->window, base);
     
     if (base.horizontal_mode) {
@@ -942,10 +931,6 @@ void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
         tile_windows(base);
     }
     
-    if (prev_focused) {
-        XRaiseWindow(base.display, prev_focused->window);
-        XSetInputFocus(base.display, prev_focused->window, RevertToPointerRoot, CurrentTime);
-    }
 }
 
 void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
@@ -956,9 +941,6 @@ void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
         }
     }
     
-    bool had_floating_focus = (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen));
-    ManagedWindow *prev_focused = (had_floating_focus && base.focused_window->window != e->window) ? base.focused_window : nullptr;
-    
     unmanage_window(e->window, base);
     
     if (base.horizontal_mode) {
@@ -967,10 +949,6 @@ void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
         tile_windows(base);
     }
     
-    if (prev_focused) {
-        XRaiseWindow(base.display, prev_focused->window);
-        XSetInputFocus(base.display, prev_focused->window, RevertToPointerRoot, CurrentTime);
-    }
 }
 
 void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
@@ -1640,13 +1618,13 @@ void nwm::run(Base &base) {
         }
 
         time_t now = time(nullptr);
-        if (now - last_bar_update >= 2) {
+        if (now - last_bar_update >= 10) {
             base.bar.systray_width = systray_get_width(base);
             bar_update_time(base);
             last_bar_update = now;
         }
 
-        usleep(10000);
+        usleep(16666);
     }
 }
 

@@ -3,6 +3,13 @@
 #include <algorithm>
 #include <X11/Xlib.h>
 
+static void ensure_focused_floating_on_top(Display *display, nwm::Base &base) {
+    if (base.focused_window &&
+        (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
+        XRaiseWindow(display, base.focused_window->window);
+    }
+}
+
 static void atomic_restack(Display *display, nwm::Base &base, std::vector<Window> &stack_order) {
     (void)base;
     if (stack_order.empty()) return;
@@ -51,24 +58,9 @@ void nwm::tile_horizontal(Base &base) {
             tiled_windows.push_back(&w);
         }
     }
-    
+
     if (tiled_windows.empty()) {
-        std::vector<Window> stack_order;
-        for (auto &w : current_ws.windows) {
-            if (w.is_floating || w.is_fullscreen) {
-                stack_order.push_back(w.window);
-            }
-        }
-        if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
-            auto it = std::find(stack_order.begin(), stack_order.end(), base.focused_window->window);
-            if (it != stack_order.end()) {
-                stack_order.erase(it);
-                stack_order.push_back(base.focused_window->window);
-            }
-            XSetInputFocus(base.display, base.focused_window->window, RevertToPointerRoot, CurrentTime);
-        }
-        atomic_restack(base.display, base, stack_order);
-        raise_override_windows(base.display, base);
+        ensure_focused_floating_on_top(base.display, base);
         XFlush(base.display);
         return;
     }
@@ -79,7 +71,8 @@ void nwm::tile_horizontal(Base &base) {
     int usable_height = screen_height - bar_height;
     int y_start = (base.bar_position == 0) ? bar_height : 0;
 
-    std::vector<Window> stack_order;
+    // Only create stack order for TILED windows
+    std::vector<Window> tiled_stack;
 
     if (tiled_windows.size() == 1) {
         tiled_windows[0]->x = base.gaps;
@@ -91,7 +84,7 @@ void nwm::tile_horizontal(Base &base) {
                          tiled_windows[0]->x, tiled_windows[0]->y,
                          tiled_windows[0]->width, tiled_windows[0]->height);
         
-        stack_order.push_back(tiled_windows[0]->window);
+        tiled_stack.push_back(tiled_windows[0]->window);
     } else {
         int window_width = screen_width / 2;
         
@@ -110,29 +103,15 @@ void nwm::tile_horizontal(Base &base) {
                              tiled_windows[i]->x, tiled_windows[i]->y,
                              tiled_windows[i]->width, tiled_windows[i]->height);
             
-            stack_order.push_back(tiled_windows[i]->window);
+            tiled_stack.push_back(tiled_windows[i]->window);
         }
     }
     
-    for (auto &w : current_ws.windows) {
-        if (w.is_floating || w.is_fullscreen) {
-            stack_order.push_back(w.window);
-        }
+    if (!tiled_stack.empty()) {
+        atomic_restack(base.display, base, tiled_stack);
     }
     
-    if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
-        auto it = std::find(stack_order.begin(), stack_order.end(), base.focused_window->window);
-        if (it != stack_order.end()) {
-            stack_order.erase(it);
-            stack_order.push_back(base.focused_window->window);
-        }
-    }
-    
-    atomic_restack(base.display, base, stack_order);
-    
-    if (base.focused_window && (base.focused_window->is_floating || base.focused_window->is_fullscreen)) {
-        XSetInputFocus(base.display, base.focused_window->window, RevertToPointerRoot, CurrentTime);
-    }
+    ensure_focused_floating_on_top(base.display, base);
     
     raise_override_windows(base.display, base);
     
@@ -150,21 +129,7 @@ void nwm::tile_windows(Base &base) {
     }
     
     if (tiled_windows.empty()) {
-        std::vector<Window> stack_order;
-        for (auto &w : current_ws.windows) {
-            if (w.is_floating || w.is_fullscreen) {
-                stack_order.push_back(w.window);
-            }
-        }
-        if (base.focused_window) {
-            auto it = std::find(stack_order.begin(), stack_order.end(), base.focused_window->window);
-            if (it != stack_order.end()) {
-                stack_order.erase(it);
-                stack_order.push_back(base.focused_window->window);
-            }
-        }
-        atomic_restack(base.display, base, stack_order);
-        raise_override_windows(base.display, base);
+        ensure_focused_floating_on_top(base.display, base);
         XFlush(base.display);
         return;
     }
@@ -175,7 +140,7 @@ void nwm::tile_windows(Base &base) {
     int usable_height = screen_height - bar_height;
     int y_start = (base.bar_position == 0) ? bar_height : 0;
 
-    std::vector<Window> stack_order;
+    std::vector<Window> tiled_stack;
 
     if (tiled_windows.size() == 1) {
         tiled_windows[0]->x = base.gaps;
@@ -187,7 +152,7 @@ void nwm::tile_windows(Base &base) {
                          tiled_windows[0]->x, tiled_windows[0]->y,
                          tiled_windows[0]->width, tiled_windows[0]->height);
         
-        stack_order.push_back(tiled_windows[0]->window);
+        tiled_stack.push_back(tiled_windows[0]->window);
     } else {
         int master_width = (int)(screen_width * base.master_factor) - base.gaps - base.gaps / 2 - 2 * base.border_width;
         int stack_x = (int)(screen_width * base.master_factor) + base.gaps / 2;
@@ -208,17 +173,15 @@ void nwm::tile_windows(Base &base) {
 
         for (auto *w : tiled_windows) {
             XMoveResizeWindow(base.display, w->window, w->x, w->y, w->width, w->height);
-            stack_order.push_back(w->window);
+            tiled_stack.push_back(w->window);
         }
     }
     
-    for (auto &w : current_ws.windows) {
-        if (w.is_floating || w.is_fullscreen) {
-            stack_order.push_back(w.window);
-        }
+    if (!tiled_stack.empty()) {
+        atomic_restack(base.display, base, tiled_stack);
     }
     
-    atomic_restack(base.display, base, stack_order);
+    ensure_focused_floating_on_top(base.display, base);
     
     raise_override_windows(base.display, base);
     
