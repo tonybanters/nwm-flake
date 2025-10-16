@@ -40,7 +40,7 @@
           
           meta = with pkgs.lib; {
             description = "A scrollable tiling window manager for X11";
-            homepage = "https://github.com/csode/nwm";
+            homepage = "https://github.com/xsoder/nwm";
             license = licenses.mit;
             platforms = platforms.linux;
             maintainers = [ ];
@@ -63,55 +63,28 @@
             gcc
             gnumake
             git
-            
             # X11 libraries
             xorg.libX11
             xorg.libXft
             xorg.libXrender
-            
             # Font libraries
             fontconfig
             freetype
-            
             # Fonts
             nerd-fonts.iosevka
-            
             # Debugging and development
             gdb
             valgrind
-            
             # Testing tools
             xorg.xorgserver
             xorg.xinit
             xorg.xev
             xorg.xdpyinfo
-            
             # Utilities
             feh
             st
             dmenu
           ];
-          
-          shellHook = ''
-            echo "NWM Development Environment"
-            echo "==========================="
-            echo ""
-            echo "Build commands:"
-            echo "  make          - Build nwm"
-            echo "  make install  - Install nwm"
-            echo "  make clean    - Clean build artifacts"
-            echo ""
-            echo "Nix commands:"
-            echo "  nix build     - Build with Nix"
-            echo "  nix run       - Run nwm directly"
-            echo ""
-            echo "Project structure:"
-            echo "  src/nwm.cpp    - Main window manager logic"
-            echo "  src/bar.cpp    - Status bar implementation"
-            echo "  src/tiling.cpp - Tiling layout algorithms"
-            echo "  src/config.hpp - User configuration"
-            echo ""
-          '';
           
           XINERAMA = "1";
           FREETYPEINC = "${pkgs.freetype.dev}/include/freetype2";

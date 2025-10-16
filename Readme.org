@@ -1,10 +1,10 @@
 #+TITLE: NWM - A Scrollable Tiling Window Manager
-#+AUTHOR: csode
+#+AUTHOR: xsoder
 #+EMAIL: 
 #+DATE: 2025
 #+OPTIONS: toc:t num:3 html-style:nil
 #+HTML_HEAD: <link rel="stylesheet" type="text/css" href="style.css" />
-
+#+HTML_HEAD: <script src="theme-toggle.js" defer></script>
 * Introduction
 
 NWM (short for "No Window Manager" or "New Window Manager") is a tiling window manager for the X Window System. It is written in modern C++14 and provides both traditional master-stack tiling and a unique horizontal scrolling layout.
@@ -107,7 +107,7 @@ sudo xbps-install -S base-devel xorg libX11-devel libXft-devel freetype-devel fo
 First, clone the NWM repository from GitHub:
 
 #+begin_src bash
-git clone https://github.com/csode/nwm.git
+git clone https://github.com/xsoder/nwm.git
 cd nwm
 #+end_src
 
@@ -2114,7 +2114,7 @@ winetricks settings
 If these troubleshooting steps don't help:
 
 1. *Check existing issues*
-   - https://github.com/csode/nwm/issues
+   - https://github.com/xsoder/nwm/issues
    - Your problem may already be reported and solved
 
 2. *Ask for help*
@@ -2545,7 +2545,7 @@ NWM is simpler and more focused on core tiling functionality.
 
 *** Community
 
-- [[https://github.com/csode/nwm][NWM GitHub Repository]]
+- [[https://github.com/xsoder/nwm][NWM GitHub Repository]]
 - [[https://github.com/csode/nwm/issues][NWM Issues]]
 - [[https://github.com/csode/nwm/discussions][NWM Discussions]]
 - [[https://reddit.com/r/unixporn][r/unixporn]] - For showcasing your setup
@@ -2635,9 +2635,9 @@ Check:
 
 ** Contact
 
-- *GitHub*: https://github.com/csode/nwm
-- *Issues*: https://github.com/csode/nwm/issues
-- *Author*: [[https://github.com/csode][csode]]
+- *GitHub*: https://github.com/xsoder/nwm
+- *Issues*: https://github.com/xsoder/nwm/issues
+- *Author*: [[https://github.com/csode][xsoder]]
 
 ---
 
