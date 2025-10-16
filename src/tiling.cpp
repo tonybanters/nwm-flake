@@ -71,7 +71,6 @@ void nwm::tile_horizontal(Base &base) {
     int usable_height = screen_height - bar_height;
     int y_start = (base.bar_position == 0) ? bar_height : 0;
 
-    // Only create stack order for TILED windows
     std::vector<Window> tiled_stack;
 
     if (tiled_windows.size() == 1) {
