@@ -1,3 +1,4 @@
+
 #+TITLE: NWM - A Scrollable Tiling Window Manager
 #+AUTHOR: xsoder
 #+EMAIL: 
@@ -10,6 +11,15 @@
 NWM (short for "No Window Manager" or "New Window Manager") is a tiling window manager for the X Window System. It is written in modern C++14 and provides both traditional master-stack tiling and a unique horizontal scrolling layout.
 
 Unlike traditional window managers that require patching to add features, NWM follows a "configuration through compilation" approach where you edit the source code directly and rebuild. The codebase is intentionally kept clean and modular to make modifications straightforward.
+
+** Demo
+
+#+BEGIN_EXPORT html
+<video width="100%" controls>
+  <source src="master.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+#+END_EXPORT
 
 ** What is a Tiling Window Manager?
 
