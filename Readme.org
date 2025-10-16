@@ -14,12 +14,9 @@ Unlike traditional window managers that require patching to add features, NWM fo
 
 ** Demo
 
-#+BEGIN_EXPORT html
-<video width="100%" controls>
-  <source src="master.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
-#+END_EXPORT
+Watch the demo video: [[./master.mp4][Click here to download and watch]]
+
+*Note:* The video will play when you download it. GitHub's org-mode viewer doesn't support inline video playback.
 
 ** What is a Tiling Window Manager?
 
