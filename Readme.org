@@ -12,12 +12,6 @@ NWM (short for "No Window Manager" or "New Window Manager") is a tiling window m
 
 Unlike traditional window managers that require patching to add features, NWM follows a "configuration through compilation" approach where you edit the source code directly and rebuild. The codebase is intentionally kept clean and modular to make modifications straightforward.
 
-** Demo
-
-Watch the demo video: [[./master.mp4][Click here to download and watch]]
-
-*Note:* The video will play when you download it. GitHub's org-mode viewer doesn't support inline video playback.
-
 ** What is a Tiling Window Manager?
 
 A tiling window manager is a window manager with an organization of the screen into mutually non-overlapping frames, as opposed to the more common approach of coordinate-based stacking of overlapping objects (windows) that tries to fully emulate the desktop metaphor.
