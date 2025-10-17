@@ -73,20 +73,27 @@ void nwm::tile_horizontal(Base &base) {
 
     std::vector<Window> tiled_stack;
 
-    if (tiled_windows.size() == 1) {
-        tiled_windows[0]->x = base.gaps;
-        tiled_windows[0]->y = base.gaps + y_start;
-        tiled_windows[0]->width = screen_width - 2 * base.gaps - 2 * base.border_width;
-        tiled_windows[0]->height = usable_height - 2 * base.gaps - 2 * base.border_width;
-        
-        XMoveResizeWindow(base.display, tiled_windows[0]->window,
-                         tiled_windows[0]->x, tiled_windows[0]->y,
-                         tiled_windows[0]->width, tiled_windows[0]->height);
-        
-        tiled_stack.push_back(tiled_windows[0]->window);
+    int window_width = current_ws.scroll_maximized ? screen_width : (screen_width / 2);
+
+    if (tiled_windows.size() == 1 || current_ws.scroll_maximized) {
+        for (size_t i = 0; i < tiled_windows.size(); ++i) {
+            int x_pos = i * window_width - current_ws.scroll_offset + base.gaps;
+            int y_pos = base.gaps + y_start;
+            int win_width = window_width - 2 * base.gaps - 2 * base.border_width;
+            int win_height = usable_height - 2 * base.gaps - 2 * base.border_width;
+            
+            tiled_windows[i]->x = x_pos;
+            tiled_windows[i]->y = y_pos;
+            tiled_windows[i]->width = win_width;
+            tiled_windows[i]->height = win_height;
+
+            XMoveResizeWindow(base.display, tiled_windows[i]->window,
+                             tiled_windows[i]->x, tiled_windows[i]->y,
+                             tiled_windows[i]->width, tiled_windows[i]->height);
+            
+            tiled_stack.push_back(tiled_windows[i]->window);
+        }
     } else {
-        int window_width = screen_width / 2;
-        
         for (size_t i = 0; i < tiled_windows.size(); ++i) {
             int x_pos = i * window_width - current_ws.scroll_offset + base.gaps;
             int y_pos = base.gaps + y_start;
@@ -111,9 +118,7 @@ void nwm::tile_horizontal(Base &base) {
     }
     
     ensure_focused_floating_on_top(base.display, base);
-    
     raise_override_windows(base.display, base);
-    
     XFlush(base.display);
 }
 

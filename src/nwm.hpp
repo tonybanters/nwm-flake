@@ -32,6 +32,7 @@ struct Workspace {
     std::vector<ManagedWindow> windows;
     ManagedWindow* focused_window;
     int scroll_offset;
+    bool scroll_maximized;
 };
 
 struct Base {
@@ -108,6 +109,7 @@ void switch_workspace(void *arg, Base &base);
 void move_to_workspace(void *arg, Base &base);
 void workspace_init(Base &base);
 Workspace& get_current_workspace(Base &base);
+void toggle_scroll_maximize(void *arg, Base &base);
 
 void handle_key_press(XKeyEvent *e, Base &base);
 void handle_button_press(XButtonEvent *e, Base &base);

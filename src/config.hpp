@@ -29,7 +29,7 @@ static const char *termcmd[]    = { "st",        NULL };
 static const char *emacs[]      = { "emacs",     NULL };
 static const char *dmenucmd[]   = { "dmenu_run", NULL };
 static const char *zoomer[]     = { "boomer"   , NULL };
-static const char *browser[]    = { "chromium",   NULL };
+static const char *browser[]    = { "firefox",   NULL };
 static const char *mastecmd[]   = { "/home/xsoder/scripts/master", NULL };
 static const char *screenshot[]   = { "/home/xsoder/scripts/screenshot", NULL };
 static const char *screenshot_select[]   = { "/home/xsoder/scripts/screenshot-select", NULL };
@@ -63,6 +63,7 @@ static struct {
     { MODKEY,             XK_a,               toggle_gap,     NULL },
     { MODKEY,             XK_t,               toggle_layout,  NULL },
     { MODKEY,             XK_f,               toggle_fullscreen, NULL },
+    { MODKEY|ShiftMask,   XK_f,               toggle_scroll_maximize, NULL },
     { MODKEY|ShiftMask,   XK_space,           toggle_float,   NULL },
     
     { MODKEY,             XK_j,               focus_next,     NULL },

@@ -320,6 +320,7 @@ void nwm::workspace_init(Base &base) {
     for (auto &ws : base.workspaces) {
         ws.focused_window = nullptr;
         ws.scroll_offset = 0;
+        ws.scroll_maximized = false;
     }
     base.current_workspace = 0;
     base.overview_mode = false;
@@ -331,6 +332,15 @@ void nwm::workspace_init(Base &base) {
 
 nwm::Workspace& nwm::get_current_workspace(Base &base) {
     return base.workspaces[base.current_workspace];
+}
+
+void nwm::toggle_scroll_maximize(void *arg, Base &base) {
+    (void)arg;
+    if (!base.horizontal_mode) return;
+    auto &current_ws = get_current_workspace(base);
+    current_ws.scroll_maximized = !current_ws.scroll_maximized;
+    current_ws.scroll_offset = 0;
+    tile_horizontal(base);
 }
 
 void nwm::toggle_fullscreen(void *arg, Base &base) {
