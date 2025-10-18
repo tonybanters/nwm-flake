@@ -1914,7 +1914,6 @@ int main(int argc, char **argv) {
     nwm::init(wm);
     nwm::run(wm);
     nwm::cleanup(wm);
-    // TODO: Implement restarting
     if (wm.restart == true) {
         execv(*argv, argv);
         perror("Failed to execv");
