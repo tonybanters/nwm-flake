@@ -1642,6 +1642,12 @@ void nwm::init(Base &base) {
     Window *children;
     unsigned int nchildren;
 
+    struct PendingWindow {
+        Window window;
+        int index;
+    };
+    std::vector<PendingWindow> pending_windows;
+
     if (XQueryTree(base.display, base.root, &root_return, &parent_return, &children, &nchildren)) {
         for (unsigned int i = 0; i < nchildren; ++i) {
             XWindowAttributes attr;
@@ -1669,11 +1675,40 @@ void nwm::init(Base &base) {
                 }
 
                 if (should_manage) {
-                    nwm::manage_window(children[i], base);
+                    if (is_restarting) {
+                        Atom index_atom = XInternAtom(base.display, "_NWM_WINDOW_INDEX", False);
+                        unsigned char *idx_prop = nullptr;
+                        int window_index = -1;
+
+                        if (XGetWindowProperty(base.display, children[i], index_atom, 0, 1,
+                                              False,
+                                              XA_CARDINAL, &actual_type, &actual_format,
+                                              &nitems, &bytes_after, &idx_prop) == Success && idx_prop) {
+                            window_index = *(long*)idx_prop;
+                            XFree(idx_prop);
+                        }
+
+                        pending_windows.push_back({children[i], window_index});
+                    } else {
+                        nwm::manage_window(children[i], base);
+                    }
                 }
             }
         }
         if (children) XFree(children);
+    }
+
+    if (is_restarting && !pending_windows.empty()) {
+        std::sort(pending_windows.begin(), pending_windows.end(),
+                 [](const PendingWindow& a, const PendingWindow& b) {
+                     if (a.index == -1) return false;
+                     if (b.index == -1) return true;
+                     return a.index < b.index;
+                 });
+
+        for (const auto& pw : pending_windows) {
+            nwm::manage_window(pw.window, base);
+        }
     }
 
     setup_ewmh(base);
@@ -1703,9 +1738,11 @@ void nwm::cleanup(Base &base) {
         Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
         Atom floating_atom = XInternAtom(base.display, "_NWM_FLOATING", False);
         Atom fullscreen_atom = XInternAtom(base.display, "_NWM_FULLSCREEN", False);
+        Atom index_atom = XInternAtom(base.display, "_NWM_WINDOW_INDEX", False);
 
         for (auto &ws : base.workspaces) {
-            for (auto &w : ws.windows) {
+            for (size_t i = 0; i < ws.windows.size(); ++i) {
+                auto &w = ws.windows[i];
                 long workspace_id = w.workspace;
                 XChangeProperty(base.display, w.window, workspace_atom,
                               XA_CARDINAL, 32, PropModeReplace,
@@ -1720,6 +1757,11 @@ void nwm::cleanup(Base &base) {
                 XChangeProperty(base.display, w.window, fullscreen_atom,
                               XA_CARDINAL, 32, PropModeReplace,
                               (unsigned char*)&is_fullscreen, 1);
+
+                long window_index = i;
+                XChangeProperty(base.display, w.window, index_atom,
+                              XA_CARDINAL, 32, PropModeReplace,
+                              (unsigned char*)&window_index, 1);
             }
         }
 
