@@ -8,7 +8,7 @@
 #+HTML_HEAD: <script src="theme-toggle.js" defer></script>
 * Introduction
 
-NWM (short for "No Window Manager" or "New Window Manager") is a tiling window manager for the X Window System. It is written in modern C++14 and provides both traditional master-stack tiling and a unique horizontal scrolling layout.
+NWM (short for "New Window Manager") is a tiling window manager for the X Window System. It is written in modern C++14 and provides both traditional master-stack tiling and a unique horizontal scrolling layout.
 
 Unlike traditional window managers that require patching to add features, NWM follows a "configuration through compilation" approach where you edit the source code directly and rebuild. The codebase is intentionally kept clean and modular to make modifications straightforward.
 
@@ -2148,6 +2148,9 @@ Found a bug? Please open an issue on GitHub with:
 
 *** Suggest Features
 
+- Temporary file to save the state: Save the location of each window.
+- Have the status bar as a separate program
+    
 Have an idea? Open an issue with the "enhancement" label.
 
 Please note: NWM aims to stay relatively simple and focused. Not all feature requests will be accepted. Features that significantly increase complexity or add many dependencies are less likely to be included.
@@ -2645,3 +2648,5 @@ Check:
 *Thank you for using NWM!*
 
 If you find NWM useful, please star the repository on GitHub and share it with others who might be interested in a clean, hackable tiling window manager.
+
+

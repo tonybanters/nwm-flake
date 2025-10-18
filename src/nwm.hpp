@@ -44,6 +44,7 @@ struct Base {
     std::vector<ManagedWindow> windows;
     ManagedWindow* focused_window;
     bool running;
+    bool restart;
     Cursor cursor;
     Cursor cursor_move;
     Cursor cursor_resize;

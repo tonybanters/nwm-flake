@@ -213,7 +213,16 @@ void nwm::scroll_left(void *arg, Base &base) {
     if (!base.horizontal_mode) return;
 
     auto &current_ws = get_current_workspace(base);
-    current_ws.scroll_offset = std::max(0, current_ws.scroll_offset - (base.scroll_step / 3));
+    int screen_width = WIDTH(base.display, base.screen);
+    
+    int scroll_amount;
+    if (current_ws.scroll_maximized) {
+        scroll_amount = screen_width;
+    } else {
+        scroll_amount = base.scroll_step / 3;
+    }
+    
+    current_ws.scroll_offset = std::max(0, current_ws.scroll_offset - scroll_amount);
     tile_horizontal(base);
 }
 
@@ -223,13 +232,15 @@ void nwm::scroll_right(void *arg, Base &base) {
 
     auto &current_ws = get_current_workspace(base);
     int screen_width = WIDTH(base.display, base.screen);
-    int window_width = screen_width / 2;
+    
+    int window_width = current_ws.scroll_maximized ? screen_width : (screen_width / 2);
+    int scroll_amount = current_ws.scroll_maximized ? screen_width : (base.scroll_step / 3);
     
     int total_width = current_ws.windows.size() * window_width;
     int max_scroll = std::max(0, total_width - screen_width);
     
     current_ws.scroll_offset = std::min(max_scroll, 
-                                        current_ws.scroll_offset + (base.scroll_step / 3));
+                                        current_ws.scroll_offset + scroll_amount);
     tile_horizontal(base);
 }
 

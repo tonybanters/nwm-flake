@@ -16,7 +16,7 @@ using namespace nwm;
 #define FONT                "DejaVu Sans Mono:size=10"
 
 static const std::vector<std::string> WIDGET = {
-    "1","2","3","4","5","6","7","8","9" 
+    "1","2","3","4","5","6","7","8","9"
 };
 
 #define RESIZE_STEP         40
@@ -60,6 +60,7 @@ static struct {
     { MODKEY|ShiftMask,   XK_s,               spawn,          screenshot_select },
     { MODKEY,             XK_r,               toggle_bar,     NULL },
     { MODKEY,             XK_q,               close_window,   NULL },
+
     { MODKEY,             XK_a,               toggle_gap,     NULL },
     { MODKEY,             XK_t,               toggle_layout,  NULL },
     { MODKEY,             XK_f,               toggle_fullscreen, NULL },
@@ -98,6 +99,7 @@ static struct {
     { MODKEY | ShiftMask, XK_9,               move_to_workspace, (void*)&ws8 },
     
     { MODKEY | ShiftMask, XK_q,               quit_wm,        NULL },
+    { MODKEY | ShiftMask, XK_r,               quit_wm,        (void*)1},
 };
 
 #endif // CONFIG_HPP
