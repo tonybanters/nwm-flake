@@ -610,7 +610,12 @@ void nwm::manage_window(Window window, Base &base) {
     }
 
     int target_workspace = base.current_workspace;
+    bool saved_floating = false;
+    bool saved_fullscreen = false;
+
     Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
+    Atom floating_atom = XInternAtom(base.display, "_NWM_FLOATING", False);
+    Atom fullscreen_atom = XInternAtom(base.display, "_NWM_FULLSCREEN", False);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
@@ -622,25 +627,47 @@ void nwm::manage_window(Window window, Base &base) {
                           &nitems, &bytes_after, &prop) == Success && prop) {
         long saved_workspace = *(long*)prop;
         XFree(prop);
+
         if (saved_workspace >= 0 && saved_workspace < NUM_WORKSPACES) {
             target_workspace = saved_workspace;
         }
     }
 
+    prop = nullptr;
+    if (XGetWindowProperty(base.display, window, floating_atom, 0, 1,
+                          True,
+                          XA_CARDINAL, &actual_type, &actual_format,
+                          &nitems, &bytes_after, &prop) == Success && prop) {
+        long is_floating = *(long*)prop;
+        saved_floating = (is_floating == 1);
+        XFree(prop);
+    }
+
+    prop = nullptr;
+    if (XGetWindowProperty(base.display, window, fullscreen_atom, 0, 1,
+                          True,
+                          XA_CARDINAL, &actual_type, &actual_format,
+                          &nitems, &bytes_after, &prop) == Success && prop) {
+        long is_fullscreen = *(long*)prop;
+        saved_fullscreen = (is_fullscreen == 1);
+        XFree(prop);
+    }
+
     auto &target_ws = base.workspaces[target_workspace];
-    // Check if already managed
+
     for (const auto &w : target_ws.windows) {
         if (w.window == window) {
             return;
         }
     }
-    bool is_float = should_float(base.display, window);
+
+    bool is_float = saved_floating || should_float(base.display, window);
 
     ManagedWindow w;
     w.window = window;
     w.is_floating = is_float;
     w.is_focused = false;
-    w.is_fullscreen = false;
+    w.is_fullscreen = saved_fullscreen;
     w.workspace = target_workspace;
     w.pre_fs_x = 0;
     w.pre_fs_y = 0;
@@ -698,19 +725,25 @@ void nwm::manage_window(Window window, Base &base) {
     XSetWindowBorder(base.display, window, base.border_color);
     XSetWindowBorderWidth(base.display, window, is_float ? 1 : base.border_width);
 
+    if (saved_fullscreen) {
+        int screen_width = WIDTH(base.display, base.screen);
+        int screen_height = HEIGHT(base.display, base.screen);
+        XSetWindowBorderWidth(base.display, window, 0);
+        XMoveResizeWindow(base.display, window, 0, 0, screen_width, screen_height);
+
+        Atom wm_state = XInternAtom(base.display, "_NET_WM_STATE", False);
+        Atom fullscreen = XInternAtom(base.display, "_NET_WM_STATE_FULLSCREEN", False);
+        XChangeProperty(base.display, window, wm_state, XA_ATOM, 32,
+                      PropModeReplace, (unsigned char*)&fullscreen, 1);
+    }
+
     if (target_workspace == (int)base.current_workspace) {
         XMapWindow(base.display, window);
-        if (is_float) {
+        if (is_float || saved_fullscreen) {
             XRaiseWindow(base.display, window);
         }
     } else {
         XUnmapWindow(base.display, window);
-    }
-
-    XFlush(base.display);
-
-    if (is_float) {
-        XRaiseWindow(base.display, window);
     }
 
     XFlush(base.display);
@@ -749,7 +782,7 @@ void nwm::unmanage_window(Window window, Base &base) {
 
     if (base.horizontal_mode) {
         int screen_width = WIDTH(base.display, base.screen);
-        int window_width = screen_width / 2;
+        int window_width = screen_width / SCROLL_WINDOWS_VISIBLE;
         int total_width = current_ws.windows.size() * window_width;
         int max_scroll = std::max(0, total_width - screen_width);
         current_ws.scroll_offset = std::min(current_ws.scroll_offset, max_scroll);
@@ -1516,16 +1549,9 @@ void nwm::init(Base &base) {
         std::cerr << "Error: Failed to load any Xft font\n";
         std::exit(1);
     }
-    workspace_init(base);
-    bar_init(base);
-    systray_init(base);
-    XSelectInput(base.display, base.root,
-                 SubstructureRedirectMask | SubstructureNotifyMask |
-                 ButtonPressMask | EnterWindowMask | KeyPressMask | PropertyChangeMask);
 
     bool is_restarting = false;
     Atom restart_marker = XInternAtom(base.display, "_NWM_RESTART_MARKER", False);
-    Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
@@ -1539,6 +1565,79 @@ void nwm::init(Base &base) {
         XFree(prop);
     }
 
+    if (is_restarting) {
+        Atom gaps_atom = XInternAtom(base.display, "_NWM_GAPS_ENABLED", False);
+        prop = nullptr;
+        if (XGetWindowProperty(base.display, base.root, gaps_atom, 0, 1,
+                              True,
+                              XA_CARDINAL, &actual_type, &actual_format,
+                              &nitems, &bytes_after, &prop) == Success && prop) {
+            long gaps_enabled = *(long*)prop;
+            base.gaps_enabled = (gaps_enabled == 1);
+            base.gaps = base.gaps_enabled ? GAP_SIZE : 0;
+            XFree(prop);
+        }
+
+        Atom master_atom = XInternAtom(base.display, "_NWM_MASTER_FACTOR", False);
+        prop = nullptr;
+        if (XGetWindowProperty(base.display, base.root, master_atom, 0, 1,
+                              True,
+                              XA_CARDINAL, &actual_type, &actual_format,
+                              &nitems, &bytes_after, &prop) == Success && prop) {
+            long master_int = *(long*)prop;
+            base.master_factor = master_int / 1000.0f;
+            XFree(prop);
+        }
+    }
+
+    workspace_init(base);
+
+    if (is_restarting) {
+        Atom current_ws_atom = XInternAtom(base.display, "_NWM_CURRENT_WORKSPACE", False);
+        prop = nullptr;
+        if (XGetWindowProperty(base.display, base.root, current_ws_atom, 0, 1,
+                              True,
+                              XA_CARDINAL, &actual_type, &actual_format,
+                              &nitems, &bytes_after, &prop) == Success && prop) {
+            long saved_ws = *(long*)prop;
+            if (saved_ws >= 0 && saved_ws < NUM_WORKSPACES) {
+                base.current_workspace = saved_ws;
+            }
+            XFree(prop);
+        }
+
+        Atom layout_atom = XInternAtom(base.display, "_NWM_WS_LAYOUTS", False);
+        prop = nullptr;
+        if (XGetWindowProperty(base.display, base.root, layout_atom, 0, NUM_WORKSPACES,
+                              True,
+                              XA_CARDINAL, &actual_type, &actual_format,
+                              &nitems, &bytes_after, &prop) == Success && prop) {
+            long *layouts = (long*)prop;
+            base.horizontal_mode = (layouts[base.current_workspace] == 1);
+            XFree(prop);
+        }
+
+        Atom scroll_atom = XInternAtom(base.display, "_NWM_WS_SCROLL_OFFSETS", False);
+        prop = nullptr;
+        if (XGetWindowProperty(base.display, base.root, scroll_atom, 0, NUM_WORKSPACES,
+                              True,
+                              XA_CARDINAL, &actual_type, &actual_format,
+                              &nitems, &bytes_after, &prop) == Success && prop) {
+            long *scroll_offsets = (long*)prop;
+            for (size_t i = 0; i < base.workspaces.size() && i < nitems; ++i) {
+                base.workspaces[i].scroll_offset = scroll_offsets[i];
+            }
+            XFree(prop);
+        }
+    }
+
+    bar_init(base);
+    systray_init(base);
+    XSelectInput(base.display, base.root,
+                 SubstructureRedirectMask | SubstructureNotifyMask |
+                 ButtonPressMask | EnterWindowMask | KeyPressMask | PropertyChangeMask);
+
+    Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
     Window root_return, parent_return;
     Window *children;
     unsigned int nchildren;
@@ -1602,14 +1701,64 @@ void nwm::cleanup(Base &base) {
                        (unsigned char*)&marker, 1);
 
         Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
+        Atom floating_atom = XInternAtom(base.display, "_NWM_FLOATING", False);
+        Atom fullscreen_atom = XInternAtom(base.display, "_NWM_FULLSCREEN", False);
+
         for (auto &ws : base.workspaces) {
             for (auto &w : ws.windows) {
                 long workspace_id = w.workspace;
                 XChangeProperty(base.display, w.window, workspace_atom,
                               XA_CARDINAL, 32, PropModeReplace,
                               (unsigned char*)&workspace_id, 1);
+
+                long is_floating = w.is_floating ? 1 : 0;
+                XChangeProperty(base.display, w.window, floating_atom,
+                              XA_CARDINAL, 32, PropModeReplace,
+                              (unsigned char*)&is_floating, 1);
+
+                long is_fullscreen = w.is_fullscreen ? 1 : 0;
+                XChangeProperty(base.display, w.window, fullscreen_atom,
+                              XA_CARDINAL, 32, PropModeReplace,
+                              (unsigned char*)&is_fullscreen, 1);
             }
         }
+
+        Atom gaps_atom = XInternAtom(base.display, "_NWM_GAPS_ENABLED", False);
+        long gaps_enabled = base.gaps_enabled ? 1 : 0;
+        XChangeProperty(base.display, base.root, gaps_atom,
+                       XA_CARDINAL, 32, PropModeReplace,
+                       (unsigned char*)&gaps_enabled, 1);
+
+        Atom master_atom = XInternAtom(base.display, "_NWM_MASTER_FACTOR", False);
+        long master_int = (long)(base.master_factor * 1000);
+        XChangeProperty(base.display, base.root, master_atom,
+                       XA_CARDINAL, 32, PropModeReplace,
+                       (unsigned char*)&master_int, 1);
+
+        Atom current_ws_atom = XInternAtom(base.display, "_NWM_CURRENT_WORKSPACE", False);
+        long current_workspace = base.current_workspace;
+        XChangeProperty(base.display, base.root, current_ws_atom,
+                       XA_CARDINAL, 32, PropModeReplace,
+                       (unsigned char*)&current_workspace, 1);
+
+        Atom layout_atom = XInternAtom(base.display, "_NWM_WS_LAYOUTS", False);
+        long layouts[NUM_WORKSPACES];
+        for (size_t i = 0; i < base.workspaces.size(); ++i) {
+            layouts[i] = base.horizontal_mode ? 1 : 0;
+        }
+        XChangeProperty(base.display, base.root, layout_atom,
+                       XA_CARDINAL, 32, PropModeReplace,
+                       (unsigned char*)layouts, NUM_WORKSPACES);
+
+        Atom scroll_atom = XInternAtom(base.display, "_NWM_WS_SCROLL_OFFSETS", False);
+        long scroll_offsets[NUM_WORKSPACES];
+        for (size_t i = 0; i < base.workspaces.size(); ++i) {
+            scroll_offsets[i] = base.workspaces[i].scroll_offset;
+        }
+        XChangeProperty(base.display, base.root, scroll_atom,
+                       XA_CARDINAL, 32, PropModeReplace,
+                       (unsigned char*)scroll_offsets, NUM_WORKSPACES);
+
         XSync(base.display, False);
     }
     if (!base.restart) {
