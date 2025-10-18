@@ -444,6 +444,12 @@ void nwm::move_to_workspace(void *arg, Base &base) {
 
             base.workspaces[target_ws].windows.push_back(w);
 
+            Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
+            long workspace_id = target_ws;
+            XChangeProperty(base.display, w.window, workspace_atom,
+                          XA_CARDINAL, 32, PropModeReplace,
+                          (unsigned char*)&workspace_id, 1);
+
             XUnmapWindow(base.display, w.window);
 
             if (current_ws.focused_window && current_ws.focused_window->window == w.window) {
@@ -595,17 +601,39 @@ void nwm::manage_window(Window window, Base &base) {
         return;
     }
 
+    if (window == base.hint_check_window) {
+        return;
+    }
+
     if (should_ignore_window(base.display, window)) {
         return;
     }
 
-    auto &current_ws = get_current_workspace(base);
-    for (const auto &w : current_ws.windows) {
+    int target_workspace = base.current_workspace;
+    Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop = nullptr;
+
+    if (XGetWindowProperty(base.display, window, workspace_atom, 0, 1,
+                          True,
+                          XA_CARDINAL, &actual_type, &actual_format,
+                          &nitems, &bytes_after, &prop) == Success && prop) {
+        long saved_workspace = *(long*)prop;
+        XFree(prop);
+        if (saved_workspace >= 0 && saved_workspace < NUM_WORKSPACES) {
+            target_workspace = saved_workspace;
+        }
+    }
+
+    auto &target_ws = base.workspaces[target_workspace];
+    // Check if already managed
+    for (const auto &w : target_ws.windows) {
         if (w.window == window) {
             return;
         }
     }
-
     bool is_float = should_float(base.display, window);
 
     ManagedWindow w;
@@ -613,7 +641,7 @@ void nwm::manage_window(Window window, Base &base) {
     w.is_floating = is_float;
     w.is_focused = false;
     w.is_fullscreen = false;
-    w.workspace = base.current_workspace;
+    w.workspace = target_workspace;
     w.pre_fs_x = 0;
     w.pre_fs_y = 0;
     w.pre_fs_width = 0;
@@ -660,7 +688,7 @@ void nwm::manage_window(Window window, Base &base) {
         w.height = HEIGHT(base.display, base.screen) / 2;
     }
 
-    current_ws.windows.push_back(w);
+    target_ws.windows.push_back(w);
 
     XSetWindowAttributes attrs;
     attrs.event_mask = EnterWindowMask | LeaveWindowMask | PropertyChangeMask |
@@ -670,7 +698,16 @@ void nwm::manage_window(Window window, Base &base) {
     XSetWindowBorder(base.display, window, base.border_color);
     XSetWindowBorderWidth(base.display, window, is_float ? 1 : base.border_width);
 
-    XMapWindow(base.display, window);
+    if (target_workspace == (int)base.current_workspace) {
+        XMapWindow(base.display, window);
+        if (is_float) {
+            XRaiseWindow(base.display, window);
+        }
+    } else {
+        XUnmapWindow(base.display, window);
+    }
+
+    XFlush(base.display);
 
     if (is_float) {
         XRaiseWindow(base.display, window);
@@ -1433,38 +1470,33 @@ void nwm::init(Base &base) {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
     sigaction(SIGCHLD, &sa, NULL);
-
     base.display = XOpenDisplay(NULL);
     if (!base.display) {
         std::cerr << "Error: Cannot open display\n";
         std::exit(1);
     }
-
     XSetErrorHandler(x_error_handler);
-
     base.gaps_enabled = true;
     base.gaps = GAP_SIZE;
     base.screen = DefaultScreen(base.display);
     base.root = RootWindow(base.display, base.screen);
     base.focused_window = nullptr;
     base.running = false;
+    base.restart = false;
     base.master_factor = 0.5f;
     base.horizontal_mode = false;
     base.widget = WIDGET;
     base.bar_visible = true;
     base.bar_position = BAR_POSITION;
-
     base.border_width = BORDER_WIDTH;
     base.border_color = BORDER_COLOR;
     base.focus_color = FOCUS_COLOR;
     base.resize_step = RESIZE_STEP;
     base.scroll_step = SCROLL_STEP;
-
     base.cursor = XCreateFontCursor(base.display, XC_left_ptr);
     base.cursor_move = XCreateFontCursor(base.display, XC_fleur);
     base.cursor_resize = XCreateFontCursor(base.display, XC_bottom_right_corner);
     XDefineCursor(base.display, base.root, base.cursor);
-
     base.xft_draw = XftDrawCreate(base.display, base.root,
                                  DefaultVisual(base.display, base.screen),
                                  DefaultColormap(base.display, base.screen));
@@ -1472,7 +1504,6 @@ void nwm::init(Base &base) {
         std::cerr << "Error: Failed to create XftDraw\n";
         std::exit(1);
     }
-
     base.xft_font = XftFontOpenName(base.display, base.screen, FONT);
     if (!base.xft_font) {
         std::cerr << "Warning: Failed to load font '" << FONT << "', trying fallback\n";
@@ -1485,15 +1516,28 @@ void nwm::init(Base &base) {
         std::cerr << "Error: Failed to load any Xft font\n";
         std::exit(1);
     }
-
     workspace_init(base);
     bar_init(base);
-    setup_ewmh(base);
     systray_init(base);
-
     XSelectInput(base.display, base.root,
                  SubstructureRedirectMask | SubstructureNotifyMask |
                  ButtonPressMask | EnterWindowMask | KeyPressMask | PropertyChangeMask);
+
+    bool is_restarting = false;
+    Atom restart_marker = XInternAtom(base.display, "_NWM_RESTART_MARKER", False);
+    Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop = nullptr;
+
+    if (XGetWindowProperty(base.display, base.root, restart_marker, 0, 1,
+                          True,
+                          XA_CARDINAL, &actual_type, &actual_format,
+                          &nitems, &bytes_after, &prop) == Success && prop) {
+        is_restarting = true;
+        XFree(prop);
+    }
 
     Window root_return, parent_return;
     Window *children;
@@ -1503,7 +1547,29 @@ void nwm::init(Base &base) {
         for (unsigned int i = 0; i < nchildren; ++i) {
             XWindowAttributes attr;
             if (XGetWindowAttributes(base.display, children[i], &attr)) {
-                if (attr.map_state == IsViewable && !should_ignore_window(base.display, children[i])) {
+                bool should_manage = false;
+
+                if (is_restarting) {
+                    if (attr.map_state == IsViewable && !should_ignore_window(base.display, children[i])) {
+                        should_manage = true;
+                    } else if (attr.map_state == IsUnmapped) {
+                        unsigned char *ws_prop = nullptr;
+                        if (XGetWindowProperty(base.display, children[i], workspace_atom, 0, 1,
+                                              False,
+                                              XA_CARDINAL, &actual_type, &actual_format,
+                                              &nitems, &bytes_after, &ws_prop) == Success && ws_prop) {
+                            XFree(ws_prop);
+                            if (!should_ignore_window(base.display, children[i])) {
+                                should_manage = true;
+                            }
+                        }
+                    }
+                } else {
+                    should_manage = (attr.map_state == IsViewable) &&
+                                   !should_ignore_window(base.display, children[i]);
+                }
+
+                if (should_manage) {
                     nwm::manage_window(children[i], base);
                 }
             }
@@ -1511,6 +1577,7 @@ void nwm::init(Base &base) {
         if (children) XFree(children);
     }
 
+    setup_ewmh(base);
     nwm::tile_windows(base);
     nwm::setup_keys(base);
     bar_draw(base);
@@ -1521,48 +1588,59 @@ void nwm::cleanup(Base &base) {
         XDestroyWindow(base.display, base.hint_check_window);
         base.hint_check_window = 0;
     }
-
     if (base.dragging || base.resizing) {
         XUngrabPointer(base.display, CurrentTime);
         base.dragging = false;
         base.resizing = false;
         base.drag_window = None;
     }
+    if (base.restart) {
+        Atom restart_marker = XInternAtom(base.display, "_NWM_RESTART_MARKER", False);
+        long marker = 1;
+        XChangeProperty(base.display, base.root, restart_marker,
+                       XA_CARDINAL, 32, PropModeReplace,
+                       (unsigned char*)&marker, 1);
 
-    for (auto &ws : base.workspaces) {
-        for (auto &w : ws.windows) {
-            XUnmapWindow(base.display, w.window);
+        Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
+        for (auto &ws : base.workspaces) {
+            for (auto &w : ws.windows) {
+                long workspace_id = w.workspace;
+                XChangeProperty(base.display, w.window, workspace_atom,
+                              XA_CARDINAL, 32, PropModeReplace,
+                              (unsigned char*)&workspace_id, 1);
+            }
+        }
+        XSync(base.display, False);
+    }
+    if (!base.restart) {
+        for (auto &ws : base.workspaces) {
+            for (auto &w : ws.windows) {
+                XUnmapWindow(base.display, w.window);
+            }
         }
     }
-
     systray_cleanup(base);
     bar_cleanup(base);
-
     if (base.xft_font) {
         XftFontClose(base.display, base.xft_font);
         base.xft_font = nullptr;
     }
-
     if (base.xft_draw) {
         XftDrawDestroy(base.xft_draw);
         base.xft_draw = nullptr;
     }
-
     if (base.cursor) {
         XFreeCursor(base.display, base.cursor);
         base.cursor = 0;
     }
-
     if (base.cursor_move) {
         XFreeCursor(base.display, base.cursor_move);
         base.cursor_move = 0;
     }
-
     if (base.cursor_resize) {
         XFreeCursor(base.display, base.cursor_resize);
         base.cursor_resize = 0;
     }
-
     if (base.display) {
         XCloseDisplay(base.display);
         base.display = nullptr;
