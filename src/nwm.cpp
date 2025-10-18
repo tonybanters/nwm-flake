@@ -187,7 +187,6 @@ bool should_ignore_window(Display *display, Window window) {
 }
 
 void nwm::raise_override_redirect_windows(Display *display) {
-
     Window root = DefaultRootWindow(display);
     Window root_return, parent_return;
     Window *children;
