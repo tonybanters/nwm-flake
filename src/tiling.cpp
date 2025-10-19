@@ -71,6 +71,13 @@ void nwm::tile_horizontal(Base &base) {
 
         int window_width = current_ws.scroll_maximized ? mon.width : (mon.width / scroll_visible);
 
+        int num_tiled = tiled_windows.size();
+        bool all_fit = (num_tiled <= scroll_visible);
+        if (all_fit && !current_ws.scroll_maximized) {
+            current_ws.scroll_offset = 0;
+            window_width = mon.width / num_tiled;
+        }
+
         if (tiled_windows.size() == 1 || current_ws.scroll_maximized) {
             for (size_t i = 0; i < tiled_windows.size(); ++i) {
                 int x_pos = mon.x + i * window_width - current_ws.scroll_offset + base.gaps;
@@ -91,7 +98,9 @@ void nwm::tile_horizontal(Base &base) {
             }
         } else {
             for (size_t i = 0; i < tiled_windows.size(); ++i) {
-                int x_pos = mon.x + i * window_width - current_ws.scroll_offset + base.gaps;
+                // Apply scroll offset only if windows don't all fit
+                int scroll_offset = all_fit ? 0 : current_ws.scroll_offset;
+                int x_pos = mon.x + i * window_width - scroll_offset + base.gaps;
                 int y_pos = base.gaps + y_start;
                 int win_width = window_width - 2 * base.gaps - 2 * base.border_width;
                 int win_height = usable_height - 2 * base.gaps - 2 * base.border_width;
@@ -315,4 +324,40 @@ void nwm::swap_prev(void *arg, Base &base) {
         tile_windows(base);
     }
     focus_window(&current_ws.windows[prev_idx], base);
+}
+
+void nwm::increment_scroll_visible(void *arg, Base &base) {
+    (void)arg;
+    Monitor *mon = get_current_monitor(base);
+    if (!mon) return;
+
+    mon->scroll_windows_visible++;
+    if (mon->scroll_windows_visible > 10) mon->scroll_windows_visible = 10;
+
+    auto &current_ws = get_current_workspace(base);
+    current_ws.scroll_offset = 0;
+
+    if (mon->horizontal_mode) {
+        tile_horizontal(base);
+    }
+
+    bar_draw(base);
+}
+
+void nwm::decrement_scroll_visible(void *arg, Base &base) {
+    (void)arg;
+    Monitor *mon = get_current_monitor(base);
+    if (!mon) return;
+
+    mon->scroll_windows_visible--;
+    if (mon->scroll_windows_visible < 1) mon->scroll_windows_visible = 1;
+
+    auto &current_ws = get_current_workspace(base);
+    current_ws.scroll_offset = 0;
+
+    if (mon->horizontal_mode) {
+        tile_horizontal(base);
+    }
+
+    bar_draw(base);
 }

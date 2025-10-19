@@ -20,6 +20,9 @@ void swap_prev(void *arg, Base &base);
 
 void raise_special_windows(Display *display);
 
+void increment_scroll_visible(void *arg, Base &base);
+void decrement_scroll_visible(void *arg, Base &base);
+
 }
 
 #endif // TILING_HPP

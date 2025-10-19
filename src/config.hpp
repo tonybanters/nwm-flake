@@ -97,6 +97,9 @@ static struct {
     { MODKEY|ShiftMask,   XK_period,          set_scroll_visible, (void*)&scroll_visible_3 },
     { MODKEY|ShiftMask,   XK_slash,           set_scroll_visible, (void*)&scroll_visible_4 },
 
+    { MODKEY,             XK_equal,          increment_scroll_visible, NULL },
+    { MODKEY,             XK_minus,          decrement_scroll_visible, NULL },
+
     { MODKEY,             XK_1,               switch_workspace, (void*)&ws0 },
     { MODKEY,             XK_2,               switch_workspace, (void*)&ws1 },
     { MODKEY,             XK_3,               switch_workspace, (void*)&ws2 },

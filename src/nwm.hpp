@@ -159,6 +159,8 @@ Monitor* get_current_monitor(Base &base);
 void focus_monitor(void *arg, Base &base);
 void set_scroll_visible(void *arg, Base &base);
 
+void increment_scroll_visible(void *arg, Base &base);
+void decrement_scroll_visible(void *arg, Base &base);
 }
 
 #endif //NWM_HPP
