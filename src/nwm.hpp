@@ -4,6 +4,7 @@
 #include <X11/Xlib.h>
 #include <X11/cursorfont.h>
 #include <X11/Xft/Xft.h>
+#include <X11/extensions/Xrandr.h>
 #include <vector>
 #include "bar.hpp"
 #include "systray.hpp"
@@ -22,10 +23,22 @@ struct ManagedWindow {
     bool is_focused;
     bool is_fullscreen;
     int workspace;
+    int monitor;
 
     int pre_fs_x, pre_fs_y;
     int pre_fs_width, pre_fs_height;
     bool pre_fs_floating;
+};
+
+struct Monitor {
+    int id;
+    int x, y;
+    int width, height;
+    int current_workspace;
+    float master_factor;
+    bool horizontal_mode;
+    int scroll_windows_visible;
+    RRCrtc crtc;
 };
 
 struct Workspace {
@@ -66,14 +79,14 @@ struct Base {
     bool overview_mode;
 
     std::vector<std::string> widget;
-    
+
     bool dragging;
     Window drag_window;
     int drag_start_x;
     int drag_start_y;
     int drag_window_start_x;
     int drag_window_start_y;
-    
+
     int border_width;
     unsigned long border_color;
     unsigned long focus_color;
@@ -81,6 +94,10 @@ struct Base {
     int scroll_step;
 
     Window hint_check_window;
+
+    std::vector<Monitor> monitors;
+    int current_monitor;
+    int xrandr_event_base;
 };
 
 void manage_window(Window window, Base &base);
@@ -135,6 +152,13 @@ void cleanup(Base &base);
 void handle_special_window_map(Display *display, Window window);
 void raise_special_windows(Display *display);
 
+void monitors_init(Base &base);
+void monitors_update(Base &base);
+Monitor* get_monitor_at_point(Base &base, int x, int y);
+Monitor* get_current_monitor(Base &base);
+void focus_monitor(void *arg, Base &base);
+void set_scroll_visible(void *arg, Base &base);
+
 }
 
-#endif // NWM_HPP
+#endif //NWM_HPP

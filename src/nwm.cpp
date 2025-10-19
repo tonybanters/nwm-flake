@@ -9,6 +9,7 @@
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #include <X11/Xft/Xft.h>
+#include <X11/extensions/Xrandr.h>
 #include <iostream>
 #include <algorithm>
 #include <unistd.h>
@@ -27,6 +28,225 @@ int x_error_handler(Display *dpy, XErrorEvent *error) {
               << " Request code: " << (int)error->request_code
               << " Resource ID: " << error->resourceid << std::endl;
     return 0;
+}
+
+void nwm::monitors_init(Base &base) {
+    base.monitors.clear();
+    base.current_monitor = 0;
+
+    int event_base, error_base;
+    if (!XRRQueryExtension(base.display, &event_base, &error_base)) {
+        Monitor mon;
+        mon.id = 0;
+        mon.x = 0;
+        mon.y = 0;
+        mon.width = WIDTH(base.display, base.screen);
+        mon.height = HEIGHT(base.display, base.screen);
+        mon.current_workspace = 0;
+        mon.master_factor = 0.5f;
+        mon.horizontal_mode = false;
+        mon.scroll_windows_visible = SCROLL_WINDOWS_VISIBLE;
+        mon.crtc = 0;
+        base.monitors.push_back(mon);
+        return;
+    }
+
+    base.xrandr_event_base = event_base;
+    XRRSelectInput(base.display, base.root, RRScreenChangeNotifyMask | RRCrtcChangeNotifyMask);
+
+    XRRScreenResources *sr = XRRGetScreenResources(base.display, base.root);
+    if (!sr) {
+        Monitor mon;
+        mon.id = 0;
+        mon.x = 0;
+        mon.y = 0;
+        mon.width = WIDTH(base.display, base.screen);
+        mon.height = HEIGHT(base.display, base.screen);
+        mon.current_workspace = 0;
+        mon.master_factor = 0.5f;
+        mon.horizontal_mode = false;
+        mon.scroll_windows_visible = SCROLL_WINDOWS_VISIBLE;
+        mon.crtc = 0;
+        base.monitors.push_back(mon);
+        return;
+    }
+
+    for (int i = 0; i < sr->ncrtc; i++) {
+        XRRCrtcInfo *ci = XRRGetCrtcInfo(base.display, sr, sr->crtcs[i]);
+        if (!ci) continue;
+
+        if (ci->width > 0 && ci->height > 0 && ci->noutput > 0) {
+            Monitor mon;
+            mon.id = base.monitors.size();
+            mon.x = ci->x;
+            mon.y = ci->y;
+            mon.width = ci->width;
+            mon.height = ci->height;
+            mon.current_workspace = mon.id % NUM_WORKSPACES;
+            mon.master_factor = 0.5f;
+            mon.horizontal_mode = false;
+            mon.scroll_windows_visible = SCROLL_WINDOWS_VISIBLE;
+            mon.crtc = sr->crtcs[i];
+            base.monitors.push_back(mon);
+        }
+
+        XRRFreeCrtcInfo(ci);
+    }
+
+    XRRFreeScreenResources(sr);
+
+    if (base.monitors.empty()) {
+        Monitor mon;
+        mon.id = 0;
+        mon.x = 0;
+        mon.y = 0;
+        mon.width = WIDTH(base.display, base.screen);
+        mon.height = HEIGHT(base.display, base.screen);
+        mon.current_workspace = 0;
+        mon.master_factor = 0.5f;
+        mon.horizontal_mode = false;
+        mon.scroll_windows_visible = SCROLL_WINDOWS_VISIBLE;
+        mon.crtc = 0;
+        base.monitors.push_back(mon);
+    }
+}
+
+void nwm::monitors_update(Base &base) {
+    std::vector<Monitor> old_monitors = base.monitors;
+    base.monitors.clear();
+
+    XRRScreenResources *sr = XRRGetScreenResources(base.display, base.root);
+    if (!sr) return;
+
+    for (int i = 0; i < sr->ncrtc; i++) {
+        XRRCrtcInfo *ci = XRRGetCrtcInfo(base.display, sr, sr->crtcs[i]);
+        if (!ci) continue;
+
+        if (ci->width > 0 && ci->height > 0 && ci->noutput > 0) {
+            Monitor mon;
+
+            bool found = false;
+            for (const auto &old_mon : old_monitors) {
+                if (old_mon.crtc == sr->crtcs[i]) {
+                    mon.current_workspace = old_mon.current_workspace;
+                    mon.master_factor = old_mon.master_factor;
+                    mon.horizontal_mode = old_mon.horizontal_mode;
+                    mon.scroll_windows_visible = old_mon.scroll_windows_visible;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                mon.current_workspace = base.monitors.size() % NUM_WORKSPACES;
+                mon.master_factor = 0.5f;
+                mon.horizontal_mode = false;
+            }
+
+            mon.id = base.monitors.size();
+            mon.x = ci->x;
+            mon.y = ci->y;
+            mon.width = ci->width;
+            mon.height = ci->height;
+            mon.crtc = sr->crtcs[i];
+            base.monitors.push_back(mon);
+        }
+
+        XRRFreeCrtcInfo(ci);
+    }
+
+    XRRFreeScreenResources(sr);
+
+    if (base.monitors.empty()) {
+        Monitor mon;
+        mon.id = 0;
+        mon.x = 0;
+        mon.y = 0;
+        mon.width = WIDTH(base.display, base.screen);
+        mon.height = HEIGHT(base.display, base.screen);
+        mon.current_workspace = 0;
+        mon.master_factor = 0.5f;
+        mon.horizontal_mode = false;
+        mon.crtc = 0;
+        base.monitors.push_back(mon);
+    }
+
+    if (base.current_monitor >= (int)base.monitors.size()) {
+        base.current_monitor = base.monitors.size() - 1;
+    }
+
+    for (auto &ws : base.workspaces) {
+        for (auto &w : ws.windows) {
+            Monitor *mon = get_monitor_at_point(base, w.x + w.width / 2, w.y + w.height / 2);
+            if (mon) {
+                w.monitor = mon->id;
+            }
+        }
+    }
+
+    if (base.horizontal_mode) {
+        tile_horizontal(base);
+    } else {
+        tile_windows(base);
+    }
+}
+
+nwm::Monitor* nwm::get_monitor_at_point(Base &base, int x, int y) {
+    for (auto &mon : base.monitors) {
+        if (x >= mon.x && x < mon.x + mon.width &&
+            y >= mon.y && y < mon.y + mon.height) {
+            return &mon;
+        }
+    }
+    return base.monitors.empty() ? nullptr : &base.monitors[0];
+}
+
+nwm::Monitor* nwm::get_current_monitor(Base &base) {
+    if (base.current_monitor >= 0 && base.current_monitor < (int)base.monitors.size()) {
+        return &base.monitors[base.current_monitor];
+    }
+    return base.monitors.empty() ? nullptr : &base.monitors[0];
+}
+
+void nwm::focus_monitor(void *arg, Base &base) {
+    if (!arg) return;
+    int target_mon = *(int*)arg;
+
+    if (target_mon >= 0 && target_mon < (int)base.monitors.size()) {
+        base.current_monitor = target_mon;
+
+        Window root_return, child_return;
+        int root_x, root_y, win_x, win_y;
+        unsigned int mask;
+        XQueryPointer(base.display, base.root, &root_return, &child_return,
+                     &root_x, &root_y, &win_x, &win_y, &mask);
+
+        Monitor *mon = &base.monitors[target_mon];
+        XWarpPointer(base.display, None, base.root, 0, 0, 0, 0,
+                    mon->x + mon->width / 2, mon->y + mon->height / 2);
+
+        base.current_workspace = mon->current_workspace;
+        bar_update_workspaces(base);
+    }
+}
+
+void nwm::set_scroll_visible(void *arg, Base &base) {
+    if (!arg) return;
+    int visible = *(int*)arg;
+
+    Monitor *mon = get_current_monitor(base);
+    if (!mon) return;
+
+    if (visible < 1) visible = 1;
+    if (visible > 10) visible = 10;
+
+    mon->scroll_windows_visible = visible;
+
+    if (mon->horizontal_mode) {
+        tile_horizontal(base);
+    }
+
+    bar_draw(base);
 }
 
 bool should_float(Display *display, Window window) {
@@ -358,11 +578,12 @@ void nwm::toggle_fullscreen(void *arg, Base &base) {
                 w.pre_fs_height = w.height;
                 w.pre_fs_floating = w.is_floating;
 
-                int screen_width = WIDTH(base.display, base.screen);
-                int screen_height = HEIGHT(base.display, base.screen);
+                Monitor *mon = get_monitor_at_point(base, w.x + w.width / 2, w.y + w.height / 2);
+                if (!mon) mon = get_current_monitor(base);
+                if (!mon) return;
 
                 XSetWindowBorderWidth(base.display, w.window, 0);
-                XMoveResizeWindow(base.display, w.window, 0, 0, screen_width, screen_height);
+                XMoveResizeWindow(base.display, w.window, mon->x, mon->y, mon->width, mon->height);
                 XRaiseWindow(base.display, w.window);
 
                 Atom wm_state = XInternAtom(base.display, "_NET_WM_STATE", False);
@@ -401,6 +622,12 @@ void nwm::switch_workspace(void *arg, Base &base) {
     }
 
     base.current_workspace = target_ws;
+
+    Monitor *mon = get_current_monitor(base);
+    if (mon) {
+        mon->current_workspace = target_ws;
+    }
+
     base.focused_window = get_current_workspace(base).focused_window;
 
     for (auto &w : get_current_workspace(base).windows) {
@@ -512,7 +739,6 @@ void nwm::setup_keys(nwm::Base &base) {
     XSync(base.display, False);
 }
 
-
 void nwm::spawn(void *arg, nwm::Base &base) {
     const char **cmd = (const char **)arg;
     if (fork() == 0) {
@@ -566,12 +792,14 @@ void nwm::toggle_float(void *arg, Base &base) {
             w.is_floating = !w.is_floating;
 
             if (w.is_floating) {
-                int screen_width = WIDTH(base.display, base.screen);
-                int screen_height = HEIGHT(base.display, base.screen);
-                w.width = screen_width / 2;
-                w.height = screen_height / 2;
-                w.x = (screen_width - w.width) / 2;
-                w.y = (screen_height - w.height) / 2;
+                Monitor *mon = get_monitor_at_point(base, w.x + w.width / 2, w.y + w.height / 2);
+                if (!mon) mon = get_current_monitor(base);
+                if (!mon) return;
+
+                w.width = mon->width / 2;
+                w.height = mon->height / 2;
+                w.x = mon->x + (mon->width - w.width) / 2;
+                w.y = mon->y + (mon->height - w.height) / 2;
 
                 XSetWindowBorderWidth(base.display, w.window, 2);
                 XSetWindowBorder(base.display, w.window, base.focus_color);
@@ -674,6 +902,10 @@ void nwm::manage_window(Window window, Base &base) {
     w.pre_fs_height = 0;
     w.pre_fs_floating = false;
 
+    Monitor *mon = get_current_monitor(base);
+    if (!mon && !base.monitors.empty()) mon = &base.monitors[0];
+    w.monitor = mon ? mon->id : 0;
+
     if (is_float) {
         XSizeHints hints;
         long supplied;
@@ -690,18 +922,24 @@ void nwm::manage_window(Window window, Base &base) {
                 w.x = hints.x;
                 w.y = hints.y;
             } else {
-                int screen_width = WIDTH(base.display, base.screen);
-                int screen_height = HEIGHT(base.display, base.screen);
-                w.x = (screen_width - w.width) / 2;
-                w.y = (screen_height - w.height) / 2;
+                if (mon) {
+                    w.x = mon->x + (mon->width - w.width) / 2;
+                    w.y = mon->y + (mon->height - w.height) / 2;
+                } else {
+                    w.x = (WIDTH(base.display, base.screen) - w.width) / 2;
+                    w.y = (HEIGHT(base.display, base.screen) - w.height) / 2;
+                }
             }
         } else {
             w.width = attr.width > 0 ? attr.width : 400;
             w.height = attr.height > 0 ? attr.height : 300;
-            int screen_width = WIDTH(base.display, base.screen);
-            int screen_height = HEIGHT(base.display, base.screen);
-            w.x = (screen_width - w.width) / 2;
-            w.y = (screen_height - w.height) / 2;
+            if (mon) {
+                w.x = mon->x + (mon->width - w.width) / 2;
+                w.y = mon->y + (mon->height - w.height) / 2;
+            } else {
+                w.x = (WIDTH(base.display, base.screen) - w.width) / 2;
+                w.y = (HEIGHT(base.display, base.screen) - w.height) / 2;
+            }
         }
 
         if (w.x != attr.x || w.y != attr.y || w.width != attr.width || w.height != attr.height) {
@@ -724,11 +962,9 @@ void nwm::manage_window(Window window, Base &base) {
     XSetWindowBorder(base.display, window, base.border_color);
     XSetWindowBorderWidth(base.display, window, is_float ? 1 : base.border_width);
 
-    if (saved_fullscreen) {
-        int screen_width = WIDTH(base.display, base.screen);
-        int screen_height = HEIGHT(base.display, base.screen);
+    if (saved_fullscreen && mon) {
         XSetWindowBorderWidth(base.display, window, 0);
-        XMoveResizeWindow(base.display, window, 0, 0, screen_width, screen_height);
+        XMoveResizeWindow(base.display, window, mon->x, mon->y, mon->width, mon->height);
 
         Atom wm_state = XInternAtom(base.display, "_NET_WM_STATE", False);
         Atom fullscreen = XInternAtom(base.display, "_NET_WM_STATE_FULLSCREEN", False);
@@ -780,11 +1016,13 @@ void nwm::unmanage_window(Window window, Base &base) {
     }
 
     if (base.horizontal_mode) {
-        int screen_width = WIDTH(base.display, base.screen);
-        int window_width = screen_width / SCROLL_WINDOWS_VISIBLE;
-        int total_width = current_ws.windows.size() * window_width;
-        int max_scroll = std::max(0, total_width - screen_width);
-        current_ws.scroll_offset = std::min(current_ws.scroll_offset, max_scroll);
+        Monitor *mon = get_current_monitor(base);
+        if (mon) {
+            int window_width = mon->width / SCROLL_WINDOWS_VISIBLE;
+            int total_width = current_ws.windows.size() * window_width;
+            int max_scroll = std::max(0, total_width - mon->width);
+            current_ws.scroll_offset = std::min(current_ws.scroll_offset, max_scroll);
+        }
     }
 }
 
@@ -846,8 +1084,10 @@ void nwm::focus_next(void *arg, Base &base) {
     focus_window(all_windows[next_idx], base);
 
     if (base.horizontal_mode && !all_windows[next_idx]->is_floating && !all_windows[next_idx]->is_fullscreen) {
-        int screen_width = WIDTH(base.display, base.screen);
-        int window_width = screen_width / 2;
+        Monitor *mon = get_current_monitor(base);
+        if (!mon) return;
+
+        int window_width = mon->width / 2;
 
         int tiled_idx = 0;
         for (int i = 0; i <= next_idx; ++i) {
@@ -861,8 +1101,8 @@ void nwm::focus_next(void *arg, Base &base) {
 
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
-        } else if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
-            current_ws.scroll_offset = target_scroll + window_width - screen_width;
+        } else if (target_scroll + window_width > current_ws.scroll_offset + mon->width) {
+            current_ws.scroll_offset = target_scroll + window_width - mon->width;
         }
 
         tile_horizontal(base);
@@ -893,8 +1133,10 @@ void nwm::focus_prev(void *arg, Base &base) {
     focus_window(all_windows[prev_idx], base);
 
     if (base.horizontal_mode && !all_windows[prev_idx]->is_floating && !all_windows[prev_idx]->is_fullscreen) {
-        int screen_width = WIDTH(base.display, base.screen);
-        int window_width = screen_width / 2;
+        Monitor *mon = get_current_monitor(base);
+        if (!mon) return;
+
+        int window_width = mon->width / 2;
 
         int tiled_idx = 0;
         for (int i = 0; i <= prev_idx; ++i) {
@@ -908,8 +1150,8 @@ void nwm::focus_prev(void *arg, Base &base) {
 
         if (target_scroll < current_ws.scroll_offset) {
             current_ws.scroll_offset = target_scroll;
-        } else if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
-            current_ws.scroll_offset = target_scroll + window_width - screen_width;
+        } else if (target_scroll + window_width > current_ws.scroll_offset + mon->width) {
+            current_ws.scroll_offset = target_scroll + window_width - mon->width;
         }
 
         tile_horizontal(base);
@@ -975,20 +1217,22 @@ void nwm::handle_map_request(XMapRequestEvent *e, Base &base) {
 
         if (!new_window->is_floating && !new_window->is_fullscreen) {
             if (base.horizontal_mode) {
-                int screen_width = WIDTH(base.display, base.screen);
-                int window_width = screen_width / 2;
+                Monitor *mon = get_current_monitor(base);
+                if (mon) {
+                    int window_width = mon->width / 2;
 
-                int tiled_idx = 0;
-                for (size_t i = 0; i < current_ws.windows.size() - 1; ++i) {
-                    if (!current_ws.windows[i].is_floating && !current_ws.windows[i].is_fullscreen) {
-                        tiled_idx++;
+                    int tiled_idx = 0;
+                    for (size_t i = 0; i < current_ws.windows.size() - 1; ++i) {
+                        if (!current_ws.windows[i].is_floating && !current_ws.windows[i].is_fullscreen) {
+                            tiled_idx++;
+                        }
                     }
-                }
 
-                int target_scroll = tiled_idx * window_width;
+                    int target_scroll = tiled_idx * window_width;
 
-                if (target_scroll + window_width > current_ws.scroll_offset + screen_width) {
-                    current_ws.scroll_offset = target_scroll + window_width - screen_width;
+                    if (target_scroll + window_width > current_ws.scroll_offset + mon->width) {
+                        current_ws.scroll_offset = target_scroll + window_width - mon->width;
+                    }
                 }
             }
 
@@ -1011,7 +1255,6 @@ void nwm::handle_unmap_notify(XUnmapEvent *e, Base &base) {
     } else {
         tile_windows(base);
     }
-
 }
 
 void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
@@ -1029,7 +1272,6 @@ void nwm::handle_destroy_notify(XDestroyWindowEvent *e, Base &base) {
     } else {
         tile_windows(base);
     }
-
 }
 
 void nwm::handle_configure_request(XConfigureRequestEvent *e, Base &base) {
@@ -1093,9 +1335,6 @@ void nwm::handle_key_press(XKeyEvent *e, Base &base) {
 
 void nwm::reload_config(void *arg, nwm::Base &base) {
     (void)arg;
-    std::cout << "Config reload triggered - please rebuild with 'make' for changes to take effect\n";
-    std::cout << "After rebuilding, restart the WM or send SIGUSR1 signal\n";
-
     setup_keys(base);
 
     if (base.horizontal_mode) {
@@ -1135,10 +1374,6 @@ void nwm::handle_button_press(XButtonEvent *e, Base &base) {
     }
 
     auto &current_ws = get_current_workspace(base);
-
-    // REMOVE THESE DUPLICATE CHECKS - they're already handled at the top!
-    // if (e->button == Button4 && (e->state & MODKEY)) { ... }
-    // if (e->button == Button5 && (e->state & MODKEY)) { ... }
 
     Window target_window = (e->subwindow != None) ? e->subwindow : e->window;
 
@@ -1223,6 +1458,11 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
                         if (XGetWindowAttributes(base.display, base.drag_window, &attr)) {
                             w.x = attr.x;
                             w.y = attr.y;
+
+                            Monitor *new_mon = get_monitor_at_point(base, w.x + w.width / 2, w.y + w.height / 2);
+                            if (new_mon) {
+                                w.monitor = new_mon->id;
+                            }
                         }
                     }
                     break;
@@ -1243,36 +1483,40 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
                     int target_idx = -1;
 
                     if (base.horizontal_mode) {
-                        int screen_width = WIDTH(base.display, base.screen);
-                        int window_width = screen_width / 2;
-                        int window_center_x = e->x_root;
-                        target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
+                        Monitor *mon = get_current_monitor(base);
+                        if (mon) {
+                            int window_width = mon->width / 2;
+                            int window_center_x = e->x_root;
+                            target_idx = (window_center_x + current_ws.scroll_offset) / window_width;
+                        }
                     } else {
-                        int screen_width = WIDTH(base.display, base.screen);
-                        int screen_height = HEIGHT(base.display, base.screen);
+                        Monitor *mon = get_monitor_at_point(base, e->x_root, e->y_root);
+                        if (!mon) mon = get_current_monitor(base);
+                        if (!mon) return;
+
                         int bar_height = base.bar_visible ? base.bar.height : 0;
 
                         int tiled_count = 0;
                         for (auto &w : current_ws.windows) {
-                            if (!w.is_floating && !w.is_fullscreen) tiled_count++;
+                            if (!w.is_floating && !w.is_fullscreen && w.monitor == mon->id) tiled_count++;
                         }
 
                         if (tiled_count == 1) {
                             target_idx = dragged_idx;
                         } else {
-                            int master_width = (int)(screen_width * base.master_factor);
+                            int master_width = (int)(mon->width * mon->master_factor);
 
-                            if (e->x_root < master_width / 2) {
+                            if (e->x_root < mon->x + master_width / 2) {
                                 target_idx = 0;
-                            } else if (e->x_root > master_width) {
-                                int usable_height = screen_height - bar_height;
+                            } else if (e->x_root > mon->x + master_width) {
+                                int usable_height = mon->height - bar_height;
                                 int stack_window_height = usable_height / (tiled_count - 1);
-                                int relative_y = e->y_root - (base.bar_position == 0 ? bar_height : 0);
+                                int relative_y = e->y_root - (mon->y + (base.bar_position == 0 ? bar_height : 0));
 
                                 int stack_idx = relative_y / stack_window_height;
                                 target_idx = std::min(std::max(1, stack_idx + 1), tiled_count - 1);
                             } else {
-                                if (e->y_root < (screen_height / 2)) {
+                                if (e->y_root < (mon->y + mon->height / 2)) {
                                     target_idx = 0;
                                 } else {
                                     target_idx = 1;
@@ -1310,12 +1554,17 @@ void nwm::handle_button_release(XButtonEvent *e, Base &base) {
             if (!is_floating && !base.horizontal_mode && current_ws.windows.size() >= 2) {
                 for (size_t i = 0; i < current_ws.windows.size(); ++i) {
                     if (current_ws.windows[i].window == base.drag_window && i == 0) {
+                        Monitor *mon = get_monitor_at_point(base,
+                            current_ws.windows[i].x + current_ws.windows[i].width / 2,
+                            current_ws.windows[i].y + current_ws.windows[i].height / 2);
+                        if (!mon) mon = get_current_monitor(base);
+                        if (!mon) break;
+
                         XWindowAttributes attr;
                         if (XGetWindowAttributes(base.display, base.drag_window, &attr)) {
-                            int screen_width = WIDTH(base.display, base.screen);
-                            base.master_factor = (float)attr.width / screen_width;
-                            if (base.master_factor < 0.1f) base.master_factor = 0.1f;
-                            if (base.master_factor > 0.9f) base.master_factor = 0.9f;
+                            mon->master_factor = (float)attr.width / mon->width;
+                            if (mon->master_factor < 0.1f) mon->master_factor = 0.1f;
+                            if (mon->master_factor > 0.9f) mon->master_factor = 0.9f;
                         }
                         break;
                     }
@@ -1502,12 +1751,15 @@ void nwm::init(Base &base) {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
     sigaction(SIGCHLD, &sa, NULL);
+
     base.display = XOpenDisplay(NULL);
     if (!base.display) {
         std::cerr << "Error: Cannot open display\n";
         std::exit(1);
     }
+
     XSetErrorHandler(x_error_handler);
+
     base.gaps_enabled = true;
     base.gaps = GAP_SIZE;
     base.screen = DefaultScreen(base.display);
@@ -1525,10 +1777,12 @@ void nwm::init(Base &base) {
     base.focus_color = FOCUS_COLOR;
     base.resize_step = RESIZE_STEP;
     base.scroll_step = SCROLL_STEP;
+
     base.cursor = XCreateFontCursor(base.display, XC_left_ptr);
     base.cursor_move = XCreateFontCursor(base.display, XC_fleur);
     base.cursor_resize = XCreateFontCursor(base.display, XC_bottom_right_corner);
     XDefineCursor(base.display, base.root, base.cursor);
+
     base.xft_draw = XftDrawCreate(base.display, base.root,
                                  DefaultVisual(base.display, base.screen),
                                  DefaultColormap(base.display, base.screen));
@@ -1536,9 +1790,9 @@ void nwm::init(Base &base) {
         std::cerr << "Error: Failed to create XftDraw\n";
         std::exit(1);
     }
+
     base.xft_font = XftFontOpenName(base.display, base.screen, FONT);
     if (!base.xft_font) {
-        std::cerr << "Warning: Failed to load font '" << FONT << "', trying fallback\n";
         base.xft_font = XftFontOpenName(base.display, base.screen, "monospace:size=10");
     }
     if (!base.xft_font) {
@@ -1549,165 +1803,33 @@ void nwm::init(Base &base) {
         std::exit(1);
     }
 
-    bool is_restarting = false;
-    Atom restart_marker = XInternAtom(base.display, "_NWM_RESTART_MARKER", False);
-    Atom actual_type;
-    int actual_format;
-    unsigned long nitems, bytes_after;
-    unsigned char *prop = nullptr;
-
-    if (XGetWindowProperty(base.display, base.root, restart_marker, 0, 1,
-                          True,
-                          XA_CARDINAL, &actual_type, &actual_format,
-                          &nitems, &bytes_after, &prop) == Success && prop) {
-        is_restarting = true;
-        XFree(prop);
-    }
-
-    if (is_restarting) {
-        Atom gaps_atom = XInternAtom(base.display, "_NWM_GAPS_ENABLED", False);
-        prop = nullptr;
-        if (XGetWindowProperty(base.display, base.root, gaps_atom, 0, 1,
-                              True,
-                              XA_CARDINAL, &actual_type, &actual_format,
-                              &nitems, &bytes_after, &prop) == Success && prop) {
-            long gaps_enabled = *(long*)prop;
-            base.gaps_enabled = (gaps_enabled == 1);
-            base.gaps = base.gaps_enabled ? GAP_SIZE : 0;
-            XFree(prop);
-        }
-
-        Atom master_atom = XInternAtom(base.display, "_NWM_MASTER_FACTOR", False);
-        prop = nullptr;
-        if (XGetWindowProperty(base.display, base.root, master_atom, 0, 1,
-                              True,
-                              XA_CARDINAL, &actual_type, &actual_format,
-                              &nitems, &bytes_after, &prop) == Success && prop) {
-            long master_int = *(long*)prop;
-            base.master_factor = master_int / 1000.0f;
-            XFree(prop);
-        }
-    }
-
     workspace_init(base);
-
-    if (is_restarting) {
-        Atom current_ws_atom = XInternAtom(base.display, "_NWM_CURRENT_WORKSPACE", False);
-        prop = nullptr;
-        if (XGetWindowProperty(base.display, base.root, current_ws_atom, 0, 1,
-                              True,
-                              XA_CARDINAL, &actual_type, &actual_format,
-                              &nitems, &bytes_after, &prop) == Success && prop) {
-            long saved_ws = *(long*)prop;
-            if (saved_ws >= 0 && saved_ws < NUM_WORKSPACES) {
-                base.current_workspace = saved_ws;
-            }
-            XFree(prop);
-        }
-
-        Atom layout_atom = XInternAtom(base.display, "_NWM_WS_LAYOUTS", False);
-        prop = nullptr;
-        if (XGetWindowProperty(base.display, base.root, layout_atom, 0, NUM_WORKSPACES,
-                              True,
-                              XA_CARDINAL, &actual_type, &actual_format,
-                              &nitems, &bytes_after, &prop) == Success && prop) {
-            long *layouts = (long*)prop;
-            base.horizontal_mode = (layouts[base.current_workspace] == 1);
-            XFree(prop);
-        }
-
-        Atom scroll_atom = XInternAtom(base.display, "_NWM_WS_SCROLL_OFFSETS", False);
-        prop = nullptr;
-        if (XGetWindowProperty(base.display, base.root, scroll_atom, 0, NUM_WORKSPACES,
-                              True,
-                              XA_CARDINAL, &actual_type, &actual_format,
-                              &nitems, &bytes_after, &prop) == Success && prop) {
-            long *scroll_offsets = (long*)prop;
-            for (size_t i = 0; i < base.workspaces.size() && i < nitems; ++i) {
-                base.workspaces[i].scroll_offset = scroll_offsets[i];
-            }
-            XFree(prop);
-        }
-    }
+    monitors_init(base);
 
     bar_init(base);
     systray_init(base);
+
     XSelectInput(base.display, base.root,
                  SubstructureRedirectMask | SubstructureNotifyMask |
                  ButtonPressMask | EnterWindowMask | KeyPressMask | PropertyChangeMask);
 
-    Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
     Window root_return, parent_return;
     Window *children;
     unsigned int nchildren;
-
-    struct PendingWindow {
-        Window window;
-        int index;
-    };
-    std::vector<PendingWindow> pending_windows;
 
     if (XQueryTree(base.display, base.root, &root_return, &parent_return, &children, &nchildren)) {
         for (unsigned int i = 0; i < nchildren; ++i) {
             XWindowAttributes attr;
             if (XGetWindowAttributes(base.display, children[i], &attr)) {
-                bool should_manage = false;
-
-                if (is_restarting) {
-                    if (attr.map_state == IsViewable && !should_ignore_window(base.display, children[i])) {
-                        should_manage = true;
-                    } else if (attr.map_state == IsUnmapped) {
-                        unsigned char *ws_prop = nullptr;
-                        if (XGetWindowProperty(base.display, children[i], workspace_atom, 0, 1,
-                                              False,
-                                              XA_CARDINAL, &actual_type, &actual_format,
-                                              &nitems, &bytes_after, &ws_prop) == Success && ws_prop) {
-                            XFree(ws_prop);
-                            if (!should_ignore_window(base.display, children[i])) {
-                                should_manage = true;
-                            }
-                        }
-                    }
-                } else {
-                    should_manage = (attr.map_state == IsViewable) &&
+                bool should_manage = (attr.map_state == IsViewable) &&
                                    !should_ignore_window(base.display, children[i]);
-                }
 
                 if (should_manage) {
-                    if (is_restarting) {
-                        Atom index_atom = XInternAtom(base.display, "_NWM_WINDOW_INDEX", False);
-                        unsigned char *idx_prop = nullptr;
-                        int window_index = -1;
-
-                        if (XGetWindowProperty(base.display, children[i], index_atom, 0, 1,
-                                              False,
-                                              XA_CARDINAL, &actual_type, &actual_format,
-                                              &nitems, &bytes_after, &idx_prop) == Success && idx_prop) {
-                            window_index = *(long*)idx_prop;
-                            XFree(idx_prop);
-                        }
-
-                        pending_windows.push_back({children[i], window_index});
-                    } else {
-                        nwm::manage_window(children[i], base);
-                    }
+                    nwm::manage_window(children[i], base);
                 }
             }
         }
         if (children) XFree(children);
-    }
-
-    if (is_restarting && !pending_windows.empty()) {
-        std::sort(pending_windows.begin(), pending_windows.end(),
-                 [](const PendingWindow& a, const PendingWindow& b) {
-                     if (a.index == -1) return false;
-                     if (b.index == -1) return true;
-                     return a.index < b.index;
-                 });
-
-        for (const auto& pw : pending_windows) {
-            nwm::manage_window(pw.window, base);
-        }
     }
 
     setup_ewmh(base);
@@ -1721,87 +1843,14 @@ void nwm::cleanup(Base &base) {
         XDestroyWindow(base.display, base.hint_check_window);
         base.hint_check_window = 0;
     }
+
     if (base.dragging || base.resizing) {
         XUngrabPointer(base.display, CurrentTime);
         base.dragging = false;
         base.resizing = false;
         base.drag_window = None;
     }
-    if (base.restart) {
-        Atom restart_marker = XInternAtom(base.display, "_NWM_RESTART_MARKER", False);
-        long marker = 1;
-        XChangeProperty(base.display, base.root, restart_marker,
-                       XA_CARDINAL, 32, PropModeReplace,
-                       (unsigned char*)&marker, 1);
 
-        Atom workspace_atom = XInternAtom(base.display, "_NWM_WORKSPACE", False);
-        Atom floating_atom = XInternAtom(base.display, "_NWM_FLOATING", False);
-        Atom fullscreen_atom = XInternAtom(base.display, "_NWM_FULLSCREEN", False);
-        Atom index_atom = XInternAtom(base.display, "_NWM_WINDOW_INDEX", False);
-
-        for (auto &ws : base.workspaces) {
-            for (size_t i = 0; i < ws.windows.size(); ++i) {
-                auto &w = ws.windows[i];
-                long workspace_id = w.workspace;
-                XChangeProperty(base.display, w.window, workspace_atom,
-                              XA_CARDINAL, 32, PropModeReplace,
-                              (unsigned char*)&workspace_id, 1);
-
-                long is_floating = w.is_floating ? 1 : 0;
-                XChangeProperty(base.display, w.window, floating_atom,
-                              XA_CARDINAL, 32, PropModeReplace,
-                              (unsigned char*)&is_floating, 1);
-
-                long is_fullscreen = w.is_fullscreen ? 1 : 0;
-                XChangeProperty(base.display, w.window, fullscreen_atom,
-                              XA_CARDINAL, 32, PropModeReplace,
-                              (unsigned char*)&is_fullscreen, 1);
-
-                long window_index = i;
-                XChangeProperty(base.display, w.window, index_atom,
-                              XA_CARDINAL, 32, PropModeReplace,
-                              (unsigned char*)&window_index, 1);
-            }
-        }
-
-        Atom gaps_atom = XInternAtom(base.display, "_NWM_GAPS_ENABLED", False);
-        long gaps_enabled = base.gaps_enabled ? 1 : 0;
-        XChangeProperty(base.display, base.root, gaps_atom,
-                       XA_CARDINAL, 32, PropModeReplace,
-                       (unsigned char*)&gaps_enabled, 1);
-
-        Atom master_atom = XInternAtom(base.display, "_NWM_MASTER_FACTOR", False);
-        long master_int = (long)(base.master_factor * 1000);
-        XChangeProperty(base.display, base.root, master_atom,
-                       XA_CARDINAL, 32, PropModeReplace,
-                       (unsigned char*)&master_int, 1);
-
-        Atom current_ws_atom = XInternAtom(base.display, "_NWM_CURRENT_WORKSPACE", False);
-        long current_workspace = base.current_workspace;
-        XChangeProperty(base.display, base.root, current_ws_atom,
-                       XA_CARDINAL, 32, PropModeReplace,
-                       (unsigned char*)&current_workspace, 1);
-
-        Atom layout_atom = XInternAtom(base.display, "_NWM_WS_LAYOUTS", False);
-        long layouts[NUM_WORKSPACES];
-        for (size_t i = 0; i < base.workspaces.size(); ++i) {
-            layouts[i] = base.horizontal_mode ? 1 : 0;
-        }
-        XChangeProperty(base.display, base.root, layout_atom,
-                       XA_CARDINAL, 32, PropModeReplace,
-                       (unsigned char*)layouts, NUM_WORKSPACES);
-
-        Atom scroll_atom = XInternAtom(base.display, "_NWM_WS_SCROLL_OFFSETS", False);
-        long scroll_offsets[NUM_WORKSPACES];
-        for (size_t i = 0; i < base.workspaces.size(); ++i) {
-            scroll_offsets[i] = base.workspaces[i].scroll_offset;
-        }
-        XChangeProperty(base.display, base.root, scroll_atom,
-                       XA_CARDINAL, 32, PropModeReplace,
-                       (unsigned char*)scroll_offsets, NUM_WORKSPACES);
-
-        XSync(base.display, False);
-    }
     if (!base.restart) {
         for (auto &ws : base.workspaces) {
             for (auto &w : ws.windows) {
@@ -1809,28 +1858,35 @@ void nwm::cleanup(Base &base) {
             }
         }
     }
+
     systray_cleanup(base);
     bar_cleanup(base);
+
     if (base.xft_font) {
         XftFontClose(base.display, base.xft_font);
         base.xft_font = nullptr;
     }
+
     if (base.xft_draw) {
         XftDrawDestroy(base.xft_draw);
         base.xft_draw = nullptr;
     }
+
     if (base.cursor) {
         XFreeCursor(base.display, base.cursor);
         base.cursor = 0;
     }
+
     if (base.cursor_move) {
         XFreeCursor(base.display, base.cursor_move);
         base.cursor_move = 0;
     }
+
     if (base.cursor_resize) {
         XFreeCursor(base.display, base.cursor_resize);
         base.cursor_resize = 0;
     }
+
     if (base.display) {
         XCloseDisplay(base.display);
         base.display = nullptr;
@@ -1857,6 +1913,13 @@ void nwm::run(Base &base) {
         while (XPending(base.display)) {
             XEvent e;
             XNextEvent(base.display, &e);
+
+            if (e.type == base.xrandr_event_base + RRScreenChangeNotify ||
+                e.type == base.xrandr_event_base + RRNotify) {
+                monitors_update(base);
+                bar_draw(base);
+                continue;
+            }
 
             switch (e.type) {
                 case MapRequest:

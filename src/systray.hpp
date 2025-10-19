@@ -56,10 +56,10 @@ void systray_remove_icon(Base &base, Window icon);
 void systray_handle_client_message(Base &base, XClientMessageEvent *e);
 void systray_handle_destroy(Base &base, Window window);
 void systray_handle_configure_request(Base &base, XConfigureRequestEvent *e);
-void systray_send_message(Display *display, Window window, long message, 
+void systray_send_message(Display *display, Window window, long message,
                          long data1, long data2, long data3);
 int systray_get_width(Base &base);
 
 }
 
-#endif // SYSTRAY_HPP
+#endif
