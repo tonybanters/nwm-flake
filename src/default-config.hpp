@@ -29,11 +29,7 @@ static const std::vector<std::string> WIDGET = {
 static const char *termcmd[]    = { "st",        NULL };
 static const char *emacs[]      = { "emacs",     NULL };
 static const char *dmenucmd[]   = { "dmenu_run", NULL };
-static const char *zoomer[]     = { "boomer"   , NULL };
 static const char *browser[]    = { "firefox",   NULL };
-static const char *mastecmd[]   = { "/home/xsoder/scripts/master", NULL };
-static const char *screenshot[]   = { "/home/xsoder/scripts/screenshot", NULL };
-static const char *screenshot_select[]   = { "/home/xsoder/scripts/screenshot-select", NULL };
 
 static const int ws0 = 0;
 static const int ws1 = 1;
@@ -63,12 +59,8 @@ static struct {
 } keys[] = {
     { MODKEY,             XK_Return,          spawn,          termcmd },
     { MODKEY,             XK_d,               spawn,          dmenucmd },
-    { MODKEY,             XK_m,               spawn,          mastecmd },
-    { MODKEY,             XK_z,               spawn,          zoomer },
     { MODKEY,             XK_c,               spawn,          emacs },
     { MODKEY,             XK_b,               spawn,          browser },
-    { MODKEY,             XK_s,               spawn,          screenshot },
-    { MODKEY|ShiftMask,   XK_s,               spawn,          screenshot_select },
     { MODKEY,             XK_r,               toggle_bar,     NULL },
     { MODKEY,             XK_q,               close_window,   NULL },
 
@@ -121,7 +113,6 @@ static struct {
     { MODKEY | ShiftMask, XK_9,               move_to_workspace, (void*)&ws8 },
 
     { MODKEY | ShiftMask, XK_q,               quit_wm,        NULL },
-    //{ MODKEY | ShiftMask, XK_r,               quit_wm,        (void*)1},
 };
 
 #endif //CONFIG_HPP

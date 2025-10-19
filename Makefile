@@ -11,9 +11,17 @@ PREFIX   ?= /usr/local
 BINDIR   ?= $(PREFIX)/bin
 XSESSIONSDIR ?= /usr/share/xsessions
 
-.PHONY: all install clean uninstall
+.PHONY: copy all install clean uninstall
 
-all: nwm
+all: copy nwm
+
+copy:
+	@if [ ! -f src/config.hpp ]; then \
+		cp src/default-config.hpp src/config.hpp; \
+		echo "Copied default-config.hpp to config.hpp"; \
+	else \
+		echo "config.hpp already exists, skipping"; \
+	fi
 
 src/%.o: src/%.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -c $< -o $@
