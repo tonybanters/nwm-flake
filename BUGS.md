@@ -14,4 +14,4 @@ Crate.io creation
 - [x] Have The amount of Window in Scroll configurable. this should be done through the config
 - [ ] Auto release is buggy and not consistent.
 - [ ] The window flickering is still an issue.
-- [x] Restarting the WM not displays the other windows hides everything.
+- [ ] Restarting the WM not displays the other windows hides everything.( After the multimonitor support this is still and issue)

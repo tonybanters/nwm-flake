@@ -6,15 +6,15 @@
 
 using namespace nwm;
 
-#define BORDER_WIDTH        1
+#define BORDER_WIDTH        3
 #define BORDER_COLOR        0x181818
 #define FOCUS_COLOR         0x005577
-#define GAP_SIZE            0
+#define GAP_SIZE            2
 
-#define BAR_POSITION        1
-#define SCROLL_WINDOWS_VISIBLE 3
+#define BAR_POSITION        0
+#define SCROLL_WINDOWS_VISIBLE 2
 
-#define FONT                "DejaVu Sans Mono:size=10"
+#define FONT                "Iosevka:size=10"
 
 static const std::vector<std::string> WIDGET = {
     "1","2","3","4","5","6","7","8","9"
@@ -121,7 +121,7 @@ static struct {
     { MODKEY | ShiftMask, XK_9,               move_to_workspace, (void*)&ws8 },
 
     { MODKEY | ShiftMask, XK_q,               quit_wm,        NULL },
-    { MODKEY | ShiftMask, XK_r,               quit_wm,        (void*)1},
+    //{ MODKEY | ShiftMask, XK_r,               quit_wm,        (void*)1},
 };
 
 #endif //CONFIG_HPP
